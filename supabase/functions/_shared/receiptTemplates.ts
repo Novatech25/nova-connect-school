@@ -60,8 +60,8 @@ export const DEFAULT_CONFIGS: Record<string, PrinterConfig> = {
     marginBottom: 15,
     marginLeft: 20,
     marginRight: 20,
-    fontSizeHeader: 18,
-    fontSizeBody: 11,
+    fontSizeHeader: 16,
+    fontSizeBody: 10,
     fontSizeFooter: 8,
     showLogo: true,
     showQR: true,
@@ -99,83 +99,47 @@ export const DEFAULT_CONFIGS: Record<string, PrinterConfig> = {
   },
 };
 
-// Couleurs professionnelles
-const COLORS = {
-  primary: [41, 98, 255],      // Bleu professionnel
-  primaryDark: [13, 71, 161],   // Bleu foncé
-  secondary: [76, 175, 80],     // Vert succès
-  accent: [255, 152, 0],        // Orange accent
-  dark: [33, 37, 41],           // Gris foncé texte
-  medium: [108, 117, 125],      // Gris moyen
-  light: [248, 249, 250],       // Gris très clair
-  white: [255, 255, 255],
-  border: [222, 226, 230],      // Bordure grise
-  gold: [255, 193, 7],          // Or pour badge
-};
-
+// Helper functions
 const numberFormatter = new Intl.NumberFormat('fr-FR');
 
-const normalizeSpacing = (value: string) => value.replace(/\u202F|\u00A0/g, ' ');
-
-const stripAmpersandArtifacts = (value: string) => {
-  const ampCount = (value.match(/&/g) || []).length;
-  if (ampCount === 0) return value;
-  const ampRatio = ampCount / Math.max(value.length, 1);
-  if (ampRatio > 0.2) {
-    return value.replace(/&(?=[A-Za-z0-9])/g, '');
-  }
-  return value;
-};
-
-const decodeHtmlEntities = (value: string) =>
-  value
-    .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+const sanitizeText = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  return str
+    .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
-
-const sanitizeText = (value: string) => {
-  const decoded = decodeHtmlEntities(value);
-  const normalized = stripAmpersandArtifacts(normalizeSpacing(decoded));
-  return normalized.replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, '');
+    .replace(/&gt;/gi, '>')
+    .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '');
 };
 
-const safeText = (value?: string | number | null) => sanitizeText(String(value ?? ''));
-
-const toNumber = (value?: number | string | null) => {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value.replace(',', '.'));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+const formatAmount = (value: any): string => {
+  const num = typeof value === 'number' ? value : parseFloat(value) || 0;
+  return `${numberFormatter.format(num)} FCFA`;
 };
 
-const formatAmount = (value?: number | string | null) =>
-  `${sanitizeText(numberFormatter.format(toNumber(value)))} FCFA`;
-
-const formatDate = (value?: Date | string | null) => {
+const formatDate = (value: any): string => {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return safeText(value);
-  return sanitizeText(date.toLocaleDateString('fr-FR', {
+  if (isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('fr-FR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
-  }));
+  });
 };
 
-const formatDateLong = (value?: Date | string | null) => {
+const formatDateLong = (value: any): string => {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return safeText(value);
-  return sanitizeText(date.toLocaleDateString('fr-FR', {
+  if (isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric'
-  }));
+  });
 };
 
 export function generateStudentPaymentReceipt(
@@ -186,352 +150,338 @@ export function generateStudentPaymentReceipt(
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: config.type === 'A4_STANDARD' ? 'a4' : [config.width, 200],
+    format: 'a4',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const left = config.marginLeft;
-  const right = pageWidth - config.marginRight;
-  const centerX = pageWidth / 2;
-  const contentWidth = right - left;
+  const margin = 20;
+  const contentWidth = pageWidth - (margin * 2);
+  let y = 15;
 
-  let yPos = config.marginTop;
-
-  // === EN-TÊTE PROFESSIONNEL AVEC DÉGRADÉ ===
-  const headerHeight = 45;
+  // ===== EN-TÊTE AVEC FOND BLEU =====
+  doc.setFillColor(41, 98, 255);
+  doc.rect(margin - 5, y - 5, contentWidth + 10, 40, 'F');
   
-  // Fond dégradé bleu
-  doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-  doc.rect(left - 3, yPos - 6, contentWidth + 6, headerHeight, 'F');
-  
-  // Ligne dorée décorative en haut
-  doc.setFillColor(COLORS.gold[0], COLORS.gold[1], COLORS.gold[2]);
-  doc.rect(left - 3, yPos - 6, contentWidth + 6, 3, 'F');
+  // Ligne dorée
+  doc.setFillColor(255, 193, 7);
+  doc.rect(margin - 5, y - 5, contentWidth + 10, 3, 'F');
 
-  // Nom de l'école en blanc et gras
-  doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
+  // Nom de l'école
+  doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeHeader + 4);
-  const schoolName = safeText(data.school.name || 'ECOLE').toUpperCase();
-  doc.text(schoolName, centerX, yPos + 12, { align: 'center' });
+  doc.setFontSize(18);
+  const schoolName = sanitizeText(data.school?.name || 'ÉCOLE').toUpperCase();
+  doc.text(schoolName, pageWidth / 2, y + 12, { align: 'center' });
 
-  // Informations de contact
+  // Adresse et contact
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(config.fontSizeBody - 1);
+  doc.setFontSize(9);
+  const address = [data.school?.address, data.school?.city, data.school?.country]
+    .filter(Boolean)
+    .join(', ');
+  if (address) {
+    doc.text(sanitizeText(address), pageWidth / 2, y + 20, { align: 'center' });
+  }
   
-  const contactInfo = [];
-  if (data.school.address) contactInfo.push(safeText(data.school.address));
-  if (data.school.phone) contactInfo.push(`Tél: ${safeText(data.school.phone)}`);
-  if (data.school.email) contactInfo.push(`Email: ${safeText(data.school.email)}`);
-  
-  let contactY = yPos + 20;
-  contactInfo.forEach((info, idx) => {
-    if (idx < 3) {
-      doc.text(info, centerX, contactY, { align: 'center' });
-      contactY += 5;
-    }
-  });
+  const contacts = [];
+  if (data.school?.phone) contacts.push(`Tél: ${sanitizeText(data.school.phone)}`);
+  if (data.school?.email) contacts.push(`Email: ${sanitizeText(data.school.email)}`);
+  if (contacts.length > 0) {
+    doc.text(contacts.join(' | '), pageWidth / 2, y + 27, { align: 'center' });
+  }
 
-  yPos += headerHeight + 5;
+  y += 45;
 
-  // === BADGE "REÇU DE PAIEMENT" ===
-  const badgeWidth = 70;
+  // ===== BADGE REÇU DE PAIEMENT =====
+  const badgeWidth = 75;
   const badgeHeight = 12;
-  const badgeX = centerX - badgeWidth / 2;
+  const badgeX = (pageWidth - badgeWidth) / 2;
   
-  // Fond du badge
-  doc.setFillColor(COLORS.gold[0], COLORS.gold[1], COLORS.gold[2]);
-  doc.roundedRect(badgeX, yPos, badgeWidth, badgeHeight, 2, 2, 'F');
-  
-  // Bordure du badge
-  doc.setDrawColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
+  doc.setFillColor(255, 193, 7);
+  doc.setDrawColor(255, 152, 0);
   doc.setLineWidth(0.5);
-  doc.roundedRect(badgeX, yPos, badgeWidth, badgeHeight, 2, 2, 'S');
+  doc.roundedRect(badgeX, y, badgeWidth, badgeHeight, 3, 3, 'FD');
   
-  // Texte du badge
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setTextColor(33, 37, 41);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody + 1);
-  doc.text('REÇU DE PAIEMENT', centerX, yPos + 8, { align: 'center' });
+  doc.setFontSize(12);
+  doc.text('REÇU DE PAIEMENT', pageWidth / 2, y + 8, { align: 'center' });
 
-  yPos += badgeHeight + 8;
+  y += 20;
 
-  // === INFORMATIONS DU REÇU (Numéro et Date) ===
-  const infoBoxHeight = 22;
-  doc.setFillColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
-  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-  doc.roundedRect(left, yPos, contentWidth, infoBoxHeight, 3, 3, 'FD');
+  // ===== INFORMATIONS DU REÇU =====
+  doc.setFillColor(248, 249, 250);
+  doc.setDrawColor(222, 226, 230);
+  doc.roundedRect(margin, y, contentWidth, 25, 3, 3, 'FD');
 
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setTextColor(33, 37, 41);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody);
-  
-  doc.text(`N° Reçu:`, left + 5, yPos + 8);
-  doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-  doc.text(safeText(data.receiptNumber), left + 30, yPos + 8);
-  
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.text(`Date:`, right - 60, yPos + 8);
-  doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-  doc.text(formatDateLong(data.date), right - 45, yPos + 8);
+  doc.setFontSize(10);
+  doc.text('N° Reçu:', margin + 5, y + 8);
+  doc.setTextColor(41, 98, 255);
+  doc.text(sanitizeText(data.receiptNumber), margin + 30, y + 8);
 
-  doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
+  doc.setTextColor(33, 37, 41);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Date:', margin + contentWidth - 80, y + 8);
+  doc.setTextColor(41, 98, 255);
+  doc.text(formatDateLong(data.date), margin + contentWidth - 60, y + 8);
+
+  doc.setTextColor(108, 117, 125);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(config.fontSizeBody - 1);
-  doc.text(`Référence: ${safeText(data.paymentReference || 'N/A')}`, left + 5, yPos + 16);
+  doc.setFontSize(9);
+  doc.text(`Référence: ${sanitizeText(data.paymentReference || 'N/A')}`, margin + 5, y + 18);
 
-  yPos += infoBoxHeight + 10;
+  y += 32;
 
-  // === SECTION ÉLÈVE ===
-  const sectionTitle = (title: string, color: number[]) => {
-    doc.setFillColor(color[0], color[1], color[2]);
-    doc.setDrawColor(color[0], color[1], color[2]);
-    doc.roundedRect(left, yPos, contentWidth, 10, 2, 2, 'F');
-    doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(config.fontSizeBody);
-    doc.text(safeText(title).toUpperCase(), left + 5, yPos + 7);
-    yPos += 14;
-  };
+  // ===== SECTION ÉLÈVE =====
+  doc.setFillColor(41, 98, 255);
+  doc.roundedRect(margin, y, contentWidth, 10, 2, 2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('INFORMATIONS DE L\'ÉLÈVE', margin + 5, y + 7);
 
-  sectionTitle('👤 Informations de l\'élève', COLORS.primary);
+  y += 15;
 
-  // Détails de l'élève en grille
+  // Données élève
+  doc.setTextColor(33, 37, 41);
+  doc.setFontSize(10);
+  
   const studentInfo = [
     ['Nom complet:', `${data.student?.first_name || ''} ${data.student?.last_name || ''}`.trim()],
     ['Matricule:', data.student?.matricule || 'N/A'],
     ['Classe:', data.student?.class_name || 'N/A'],
   ];
 
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.setFontSize(config.fontSizeBody);
-  
   studentInfo.forEach(([label, value]) => {
     doc.setFont('helvetica', 'bold');
-    doc.text(safeText(label), left + 5, yPos);
+    doc.text(sanitizeText(label), margin + 5, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(safeText(value), left + 45, yPos);
-    yPos += 7;
+    doc.text(sanitizeText(value) || 'N/A', margin + 45, y);
+    y += 7;
   });
 
-  yPos += 5;
+  y += 5;
 
-  // === SECTION DÉTAILS DU PAIEMENT ===
-  sectionTitle('💳 Détails du paiement', COLORS.secondary);
+  // ===== SECTION DÉTAILS DU PAIEMENT =====
+  doc.setFillColor(76, 175, 80);
+  doc.roundedRect(margin, y, contentWidth, 10, 2, 2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('DÉTAILS DU PAIEMENT', margin + 5, y + 7);
 
+  y += 15;
+
+  // Données paiement
+  doc.setTextColor(33, 37, 41);
+  
   const paymentDetails = [
-    ['Type de frais:', data.feeType?.name || 'N/A'],
-    ['Nature:', data.paymentNature || 'Paiement normal'],
-    ['Période couverte:', data.periodCoverage || 'N/A'],
-    ['Mode de paiement:', data.paymentMethod || 'N/A'],
-    ['Caissier:', data.cashier ? `${data.cashier.first_name} ${data.cashier.last_name}`.trim() : 'N/A'],
+    ['Type de frais:', data.feeType?.name],
+    ['Nature:', data.paymentNature],
+    ['Période couverte:', data.periodCoverage],
+    ['Mode de paiement:', data.paymentMethod],
+    ['Caissier:', data.cashier ? `${data.cashier.first_name} ${data.cashier.last_name}`.trim() : null],
   ];
 
   paymentDetails.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(label), left + 5, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(safeText(value), left + 50, yPos);
-    yPos += 7;
+    if (value) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(sanitizeText(label), margin + 5, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(sanitizeText(value), margin + 50, y);
+      y += 7;
+    }
   });
 
-  yPos += 5;
+  y += 5;
 
-  // === TABLEAU DES MONTANTS ===
-  sectionTitle('💰 Détail des montants', COLORS.accent);
+  // ===== SECTION MONTANTS =====
+  doc.setFillColor(255, 152, 0);
+  doc.roundedRect(margin, y, contentWidth, 10, 2, 2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('DÉTAIL DES MONTANTS', margin + 5, y + 7);
 
-  // En-têtes du tableau
-  const col1Width = 80;
-  const col2Width = contentWidth - col1Width - 10;
+  y += 15;
+
+  // Tableau des montants
+  const colDesc = margin + 5;
+  const colAmount = margin + contentWidth - 5;
   const rowHeight = 8;
 
-  doc.setFillColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
-  doc.rect(left + 5, yPos - 5, contentWidth - 10, rowHeight, 'F');
+  // En-tête tableau
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin + 2, y - 5, contentWidth - 4, rowHeight, 'F');
+  doc.setTextColor(33, 37, 41);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody);
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.text('Description', left + 8, yPos);
-  doc.text('Montant', left + col1Width + 10, yPos);
-  yPos += rowHeight;
+  doc.setFontSize(10);
+  doc.text('Description', colDesc, y);
+  doc.text('Montant', colAmount, y, { align: 'right' });
+
+  y += rowHeight;
 
   // Lignes du tableau
-  const tableRows = [
-    ['Montant payé', formatAmount(data.amount)],
-    ['Remise accordée', data.discount || data.feeSchedule?.discount_amount ? formatAmount(data.discount || data.feeSchedule?.discount_amount) : '-'],
-    ['Arriérés', data.arrears ? formatAmount(data.arrears) : '-'],
-    ['Montant total dû', formatAmount(data.feeSchedule?.amount)],
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+
+  const amountRows = [
+    ['Montant payé', data.amount],
+    ['Montant total dû', data.feeSchedule?.amount],
+    ['Déjà payé (cumulé)', data.feeSchedule?.paid_amount],
+    ['Remise accordée', data.discount || data.feeSchedule?.discount_amount],
+    ['Arriérés', data.arrears],
   ];
 
-  doc.setFont('helvetica', 'normal');
-  tableRows.forEach(([desc, amount], idx) => {
-    if (idx % 2 === 0) {
-      doc.setFillColor(250, 250, 250);
-      doc.rect(left + 5, yPos - 5, contentWidth - 10, rowHeight, 'F');
+  amountRows.forEach(([desc, amount], idx) => {
+    if (amount !== undefined && amount !== null) {
+      if (idx % 2 === 0) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(margin + 2, y - 5, contentWidth - 4, rowHeight, 'F');
+      }
+      doc.setTextColor(33, 37, 41);
+      doc.text(sanitizeText(desc), colDesc, y);
+      doc.setFont('helvetica', 'bold');
+      doc.text(formatAmount(amount), colAmount, y, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      y += rowHeight;
     }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-    doc.text(safeText(desc), left + 8, yPos);
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(amount), right - 8, yPos, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    yPos += rowHeight;
   });
-
-  // Total payé
-  yPos += 3;
-  doc.setFillColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
-  doc.roundedRect(left + 5, yPos - 5, contentWidth - 10, rowHeight + 2, 2, 2, 'F');
-  doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody + 1);
-  doc.text('TOTAL RÉGLÉ', left + 8, yPos + 1);
-  doc.text(formatAmount(data.amount), right - 8, yPos + 1, { align: 'right' });
-
-  yPos += rowHeight + 8;
 
   // Reste à payer
   const remaining = data.feeSchedule?.remaining_amount || 0;
   if (remaining > 0) {
-    doc.setFillColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
-    doc.roundedRect(left + 5, yPos - 5, contentWidth - 10, rowHeight, 2, 2, 'F');
-    doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
+    y += 3;
+    doc.setFillColor(255, 152, 0);
+    doc.roundedRect(margin + 2, y - 5, contentWidth - 4, rowHeight, 2, 2, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(config.fontSizeBody);
-    doc.text('RESTE À PAYER', left + 8, yPos);
-    doc.text(formatAmount(remaining), right - 8, yPos, { align: 'right' });
-    yPos += rowHeight + 5;
+    doc.text('RESTE À PAYER', colDesc, y);
+    doc.text(formatAmount(remaining), colAmount, y, { align: 'right' });
+    y += rowHeight + 5;
   }
+
+  // Total réglé (mis en évidence)
+  y += 3;
+  doc.setFillColor(76, 175, 80);
+  doc.roundedRect(margin + 2, y - 5, contentWidth - 4, rowHeight + 2, 2, 2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('TOTAL RÉGLÉ CETTE FOIS', colDesc, y + 1);
+  doc.text(formatAmount(data.amount), colAmount, y + 1, { align: 'right' });
+
+  y += rowHeight + 10;
 
   // Notes
   if (data.paymentNotes || data.feeSchedule?.discount_reason) {
-    yPos += 3;
-    doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
+    doc.setTextColor(108, 117, 125);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(config.fontSizeBody - 1);
+    doc.setFontSize(9);
     
     if (data.feeSchedule?.discount_reason) {
-      const noteText = `Motif remise: ${safeText(data.feeSchedule.discount_reason)}`;
-      const noteLines = doc.splitTextToSize(noteText, contentWidth - 10);
-      doc.text(noteLines, left + 5, yPos);
-      yPos += noteLines.length * 5;
+      doc.text(`Motif de la remise: ${sanitizeText(data.feeSchedule.discount_reason)}`, margin + 5, y);
+      y += 5;
     }
     
     if (data.paymentNotes) {
-      const noteLines = doc.splitTextToSize(safeText(`Notes: ${data.paymentNotes}`), contentWidth - 10);
-      doc.text(noteLines, left + 5, yPos);
-      yPos += noteLines.length * 5;
+      const noteLines = doc.splitTextToSize(sanitizeText(`Notes: ${data.paymentNotes}`), contentWidth - 10);
+      doc.text(noteLines, margin + 5, y);
+      y += noteLines.length * 5;
     }
+    y += 5;
   }
 
-  yPos += 10;
-
-  // === SECTION SIGNATURES ===
-  if (config.showSignature) {
-    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+  // ===== SIGNATURES =====
+  if (config.showSignature && y < pageHeight - 60) {
+    doc.setDrawColor(150, 150, 150);
     doc.setLineWidth(0.3);
     
-    const sigY = yPos;
+    const sigY = y;
     const lineWidth = 60;
     
-    // Signature caissier
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.setTextColor(33, 37, 41);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(config.fontSizeBody - 1);
-    doc.text('Signature du caissier', left + 5, sigY);
-    doc.line(left + 5, sigY + 8, left + 5 + lineWidth, sigY + 8);
+    doc.setFontSize(9);
+    doc.text('Signature du caissier', margin + 5, sigY);
+    doc.line(margin + 5, sigY + 10, margin + 5 + lineWidth, sigY + 10);
     
-    // Signature parent
-    doc.text('Signature du parent / tuteur', right - lineWidth - 5, sigY, { align: 'left' });
-    doc.line(right - lineWidth - 5, sigY + 8, right - 5, sigY + 8);
+    doc.text('Signature du parent/tuteur', margin + contentWidth - lineWidth - 5, sigY, { align: 'left' });
+    doc.line(margin + contentWidth - lineWidth - 5, sigY + 10, margin + contentWidth - 5, sigY + 10);
     
-    yPos = sigY + 20;
+    y = sigY + 20;
   }
 
-  // === SECTION QR CODE ET VÉRIFICATION ===
+  // ===== QR CODE =====
   const drawQrMatrix = (modules: boolean[][], x: number, y: number, size: number) => {
     const count = modules.length;
     if (count === 0) return;
     const marginModules = 4;
     const totalModules = count + marginModules * 2;
     const cell = size / totalModules;
-    const qrSizeActual = cell * totalModules;
     doc.setFillColor(255, 255, 255);
-    doc.rect(x, y, qrSizeActual, qrSizeActual, 'F');
+    doc.rect(x, y, cell * totalModules, cell * totalModules, 'F');
     doc.setFillColor(0, 0, 0);
-    for (let row = 0; row < count; row += 1) {
-      for (let col = 0; col < count; col += 1) {
+    for (let row = 0; row < count; row++) {
+      for (let col = 0; col < count; col++) {
         if (modules[row][col]) {
-          doc.rect(
-            x + (col + marginModules) * cell,
-            y + (row + marginModules) * cell,
-            cell,
-            cell,
-            'F'
-          );
+          doc.rect(x + (col + marginModules) * cell, y + (row + marginModules) * cell, cell, cell, 'F');
         }
       }
     }
   };
 
-  if (config.showQR && qrCode) {
-    const qrSize = 30;
-    const qrY = Math.min(yPos, pageHeight - config.marginBottom - qrSize - 20);
+  if (config.showQR && qrCode && y < pageHeight - 50) {
+    const qrSize = 28;
+    const qrY = Math.min(y, pageHeight - 50);
     
-    // Cadre de vérification
-    doc.setFillColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
-    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-    doc.roundedRect(left, qrY - 5, contentWidth, qrSize + 15, 3, 3, 'FD');
+    // Cadre
+    doc.setFillColor(248, 249, 250);
+    doc.setDrawColor(222, 226, 230);
+    doc.roundedRect(margin, qrY - 3, contentWidth, qrSize + 16, 3, 3, 'FD');
     
-    // QR Code
+    // QR
     if (qrCode.dataUrl) {
-      doc.addImage(qrCode.dataUrl, 'PNG', left + 5, qrY, qrSize, qrSize);
+      doc.addImage(qrCode.dataUrl, 'PNG', margin + 5, qrY, qrSize, qrSize);
     } else if (qrCode.modules) {
-      drawQrMatrix(qrCode.modules, left + 5, qrY, qrSize);
+      drawQrMatrix(qrCode.modules, margin + 5, qrY, qrSize);
     }
     
-    // Texte de vérification
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    // Texte
+    doc.setTextColor(33, 37, 41);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(config.fontSizeBody);
-    doc.text('Vérification du reçu', left + qrSize + 10, qrY + 8);
+    doc.setFontSize(10);
+    doc.text('Vérification du reçu', margin + qrSize + 12, qrY + 8);
     
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(config.fontSizeBody - 1);
-    doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
-    doc.text('Scannez ce QR code pour vérifier', left + qrSize + 10, qrY + 14);
-    doc.text('l\'authenticité de ce document', left + qrSize + 10, qrY + 19);
+    doc.setFontSize(9);
+    doc.setTextColor(108, 117, 125);
+    doc.text('Scannez ce QR code pour vérifier', margin + qrSize + 12, qrY + 15);
+    doc.text('l\'authenticité de ce document', margin + qrSize + 12, qrY + 21);
     
     if (data.verificationUrl) {
-      doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-      doc.setFontSize(config.fontSizeFooter);
-      const urlText = safeText(data.verificationUrl.substring(0, 50) + '...');
-      doc.text(urlText, left + qrSize + 10, qrY + 26);
+      doc.setTextColor(41, 98, 255);
+      doc.setFontSize(7);
+      const url = sanitizeText(data.verificationUrl);
+      doc.text(url.length > 60 ? url.substring(0, 60) + '...' : url, margin + qrSize + 12, qrY + 28);
     }
   }
 
-  // === PIED DE PAGE ===
-  const footerY = pageHeight - config.marginBottom + 5;
+  // ===== PIED DE PAGE =====
+  const footerY = pageHeight - 12;
   
-  // Ligne de séparation
-  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+  doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.5);
-  doc.line(left, footerY - 5, right, footerY - 5);
+  doc.line(margin, footerY - 5, margin + contentWidth, footerY - 5);
   
-  // Texte du footer
-  doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
+  doc.setTextColor(108, 117, 125);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(config.fontSizeFooter);
-  doc.text('Reçu généré par NovaConnect School - Système de gestion scolaire', centerX, footerY, { align: 'center' });
-  doc.text(`Document électronique authentifié - N° ${safeText(data.receiptNumber)}`, centerX, footerY + 4, { align: 'center' });
-
-  // Watermark "ANNULE" si nécessaire
-  const statusValue = safeText(data.status || '').toLowerCase();
-  if (statusValue === 'cancelled' || statusValue === 'canceled' || statusValue === 'annule' || statusValue === 'annulée' || statusValue === 'annulee') {
-    doc.setTextColor(220, 220, 220);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(60);
-    doc.text('ANNULE', centerX, pageHeight / 2, { align: 'center', angle: 30 });
-  }
+  doc.setFontSize(8);
+  doc.text('Reçu généré par NovaConnect School - Système de gestion scolaire', pageWidth / 2, footerY, { align: 'center' });
+  doc.text(`Document électronique authentifié - N° ${sanitizeText(data.receiptNumber)}`, pageWidth / 2, footerY + 4, { align: 'center' });
 
   return new Uint8Array(doc.output('arraybuffer'));
 }
@@ -541,7 +491,6 @@ export function generateTeacherSalaryReceipt(
   config: PrinterConfig,
   qrCode?: QrCodePayload
 ): Uint8Array {
-  // Pour l'instant, utiliser la même fonction avec des ajustements
-  // ou créer une version améliorée similaire
+  // Pour l'instant, utiliser la même fonction
   return generateStudentPaymentReceipt(data, config, qrCode);
 }
