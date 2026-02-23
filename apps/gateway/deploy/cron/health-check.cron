@@ -1,0 +1,21 @@
+# ==============================================
+# NovaConnect Gateway - Cron Jobs
+# ==============================================
+#
+# Installation:
+#   sudo cp deploy/cron/health-check.cron /etc/cron.d/novaconnect-gateway
+#   sudo chmod 644 /etc/cron.d/novaconnect-gateway
+#   sudo systemctl restart cron
+# ==============================================
+
+# Health check toutes les 5 minutes
+*/5 * * * * gateway /var/www/novaconnect-gateway/deploy/scripts/health-check.sh >> /var/www/novaconnect-gateway/logs/health-check.log 2>&1
+
+# Backup toutes les heures à 15 minutes passées
+15 * * * * gateway /var/www/novaconnect-gateway/deploy/scripts/backup.sh >> /var/www/novaconnect-gateway/logs/backup.log 2>&1
+
+# Nettoyage des logs tous les jours à 2h du matin
+0 2 * * * gateway find /var/www/novaconnect-gateway/logs -name "*.log" -mtime +7 -delete
+
+# Sync with cloud toutes les 10 minutes
+*/10 * * * * gateway curl -X POST http://localhost:3001/api/sync/trigger

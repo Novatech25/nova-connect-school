@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NovaConnect Gateway - Administration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div x-data="gatewayAdmin()" x-cloak class="container mx-auto p-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">NovaConnect Gateway - Administration</h1>
+      <button @click="loadAllData()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        🔄 Rafraîchir
+      </button>
+    </div>
+
+    <!-- Status Overview -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <!-- License Status -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">Licence</h2>
+        <div x-show="license">
+          <div class="space-y-2">
+            <p class="text-sm"><span class="font-medium">École:</span> <span class="text-gray-600" x-text="license?.school_id"></span></p>
+            <p class="text-sm"><span class="font-medium">Statut:</span>
+              <span :class="{
+                'text-green-600 font-medium': license?.status === 'active',
+                'text-red-600 font-medium': license?.status !== 'active'
+              }" x-text="license?.status"></span>
+            </p>
+            <p class="text-sm"><span class="font-medium">Expire le:</span>
+              <span class="text-gray-600" x-text="formatDate(license?.expires_at)"></span>
+            </p>
+            <p class="text-sm"><span class="font-medium">Dernière validation:</span>
+              <span class="text-gray-600" x-text="formatDate(license?.last_validated_at)"></span>
+            </p>
+          </div>
+        </div>
+        <div x-show="!license" class="text-gray-500">
+          Chargement...
+        </div>
+      </div>
+
+      <!-- Sync Statistics -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">Synchronisation</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="text-center">
+            <p class="text-3xl font-bold text-yellow-600" x-text="syncStats?.pending || 0"></p>
+            <p class="text-xs text-gray-500">En attente</p>
+          </div>
+          <div class="text-center">
+            <p class="text-3xl font-bold text-green-600" x-text="syncStats?.synced || 0"></p>
+            <p class="text-xs text-gray-500">Synchronisés</p>
+          </div>
+          <div class="text-center">
+            <p class="text-3xl font-bold text-red-600" x-text="syncStats?.failed || 0"></p>
+            <p class="text-xs text-gray-500">Échecs</p>
+          </div>
+          <div class="text-center">
+            <p class="text-3xl font-bold text-gray-600" x-text="syncStats?.total || 0"></p>
+            <p class="text-xs text-gray-500">Total</p>
+          </div>
+        </div>
+        <button @click="syncNow()" :disabled="isSyncing"
+                class="mt-4 w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400">
+          <span x-show="!isSyncing">Synchroniser maintenant</span>
+          <span x-show="isSyncing">Synchronisation en cours...</span>
+        </button>
+      </div>
+
+      <!-- Database Statistics -->
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">Base de données</h2>
+        <div class="space-y-2">
+          <template x-for="(count, table) in tableStats" :key="table">
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600" x-text="formatTableName(table)"></span>
+              <span class="font-medium" x-text="count"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold text-gray-700">Événements récents</h2>
+        <button @click="cleanupEvents()" class="text-sm text-red-600 hover:text-red-700">
+          🗑️ Nettoyer les anciens événements
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b bg-gray-50">
+              <th class="text-left p-3 text-sm font-medium text-gray-600">Date</th>
+              <th class="text-left p-3 text-sm font-medium text-gray-600">Type</th>
+              <th class="text-left p-3 text-sm font-medium text-gray-600">Table</th>
+              <th class="text-left p-3 text-sm font-medium text-gray-600">ID Enregistrement</th>
+              <th class="text-left p-3 text-sm font-medium text-gray-600">Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="event in events" :key="event.id">
+              <tr class="border-b hover:bg-gray-50">
+                <td class="p-3 text-sm" x-text="formatDateTime(event.created_at)"></td>
+                <td class="p-3 text-sm">
+                  <span class="px-2 py-1 rounded text-xs font-medium"
+                        :class="{
+                          'bg-blue-100 text-blue-800': event.event_type === 'create',
+                          'bg-yellow-100 text-yellow-800': event.event_type === 'update',
+                          'bg-red-100 text-red-800': event.event_type === 'delete'
+                        }" x-text="event.event_type"></span>
+                </td>
+                <td class="p-3 text-sm font-mono text-xs" x-text="event.table_name"></td>
+                <td class="p-3 text-sm font-mono text-xs" x-text="event.record_id"></td>
+                <td class="p-3 text-sm">
+                  <span :class="{
+                    'text-green-600 font-medium': event.sync_status === 'synced',
+                    'text-yellow-600 font-medium': event.sync_status === 'pending',
+                    'text-red-600 font-medium': event.sync_status === 'failed'
+                  }" x-text="event.sync_status"></span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="events.length === 0" class="text-center py-8 text-gray-500">
+        Aucun événement récent
+      </div>
+    </div>
+
+    <!-- Health Status Footer -->
+    <div class="mt-8 text-center text-sm text-gray-500">
+      <span x-show="health?.status === 'healthy'" class="text-green-600">
+        ✅ Système en ligne
+      </span>
+      <span x-show="health?.status !== 'healthy'" class="text-red-600">
+        ⚠️ Attention: Système hors ligne
+      </span>
+      <span class="mx-2">|</span>
+      <span x-text="health?.timestamp"></span>
+    </div>
+  </div>
+
+  <script>
+    function gatewayAdmin() {
+      return {
+        license: null,
+        syncStats: null,
+        tableStats: null,
+        events: [],
+        health: null,
+        isSyncing: false,
+
+        async init() {
+          await this.loadAllData();
+          // Auto-refresh every 30 seconds
+          setInterval(() => this.loadAllData(), 30000);
+        },
+
+        async loadAllData() {
+          await Promise.all([
+            this.loadLicense(),
+            this.loadSyncStats(),
+            this.loadTableStats(),
+            this.loadEvents(),
+            this.loadHealth()
+          ]);
+        },
+
+        async loadLicense() {
+          try {
+            const res = await fetch('/api/admin/license');
+            this.license = await res.json();
+          } catch (error) {
+            console.error('Failed to load license:', error);
+          }
+        },
+
+        async loadSyncStats() {
+          try {
+            const res = await fetch('/api/admin/sync/stats');
+            this.syncStats = await res.json();
+          } catch (error) {
+            console.error('Failed to load sync stats:', error);
+          }
+        },
+
+        async loadTableStats() {
+          try {
+            const res = await fetch('/api/admin/status');
+            const data = await res.json();
+            this.tableStats = data.tables;
+          } catch (error) {
+            console.error('Failed to load table stats:', error);
+          }
+        },
+
+        async loadEvents() {
+          try {
+            const res = await fetch('/api/admin/events?limit=50');
+            this.events = await res.json();
+          } catch (error) {
+            console.error('Failed to load events:', error);
+          }
+        },
+
+        async loadHealth() {
+          try {
+            const res = await fetch('/api/admin/health');
+            this.health = await res.json();
+          } catch (error) {
+            console.error('Failed to load health:', error);
+            this.health = { status: 'error', timestamp: new Date().toISOString() };
+          }
+        },
+
+        async syncNow() {
+          this.isSyncing = true;
+          try {
+            await fetch('/api/admin/sync/trigger', { method: 'POST' });
+            await this.loadAllData();
+            alert('✅ Synchronisation terminée');
+          } catch (error) {
+            alert('❌ Erreur lors de la synchronisation');
+          } finally {
+            this.isSyncing = false;
+          }
+        },
+
+        async cleanupEvents() {
+          if (confirm('Supprimer les événements de plus de 30 jours ?')) {
+            try {
+              await fetch('/api/admin/events/cleanup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days: 30 })
+              });
+              await this.loadEvents();
+              alert('✅ Nettoyage terminé');
+            } catch (error) {
+              alert('❌ Erreur lors du nettoyage');
+            }
+          }
+        },
+
+        formatDate(dateStr) {
+          if (!dateStr) return '-';
+          return new Date(dateStr).toLocaleDateString('fr-FR');
+        },
+
+        formatDateTime(dateStr) {
+          if (!dateStr) return '-';
+          return new Date(dateStr).toLocaleString('fr-FR');
+        },
+
+        formatTableName(table) {
+          const names = {
+            'attendance_sessions': 'Présences (sessions)',
+            'attendance_records': 'Présences (enregistrements)',
+            'grades': 'Notes',
+            'lesson_logs': 'Cahier de texte',
+            'payments': 'Paiements',
+            'schedules': 'Emploi du temps'
+          };
+          return names[table] || table;
+        }
+      }
+    }
+  </script>
+</body>
+</html>

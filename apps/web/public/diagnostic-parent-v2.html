@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diagnostic Parent - NovaConnect</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h1 {
+        color: #1e293b;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #334155;
+        margin: 20px 0 10px 0;
+        font-size: 1.2em;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #475569;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 12px 24px;
+        background: #0f172a;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+      button:hover {
+        background: #1e293b;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-fix {
+        background: #059669 !important;
+      }
+      .btn-fix:hover {
+        background: #047857 !important;
+      }
+      .result {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 20px;
+        font-family: monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      .error {
+        background: #fef2f2;
+        color: #dc2626;
+        border-color: #fecaca;
+      }
+      .success {
+        background: #f0fdf4;
+        color: #16a34a;
+        border-color: #bbf7d0;
+      }
+      .warning {
+        background: #fffbeb;
+        color: #ca8a04;
+        border-color: #fde68a;
+      }
+      .instructions {
+        background: #eff6ff;
+        border-left: 4px solid #3b82f6;
+        padding: 15px;
+        margin-bottom: 20px;
+      }
+      .instructions h3 {
+        margin-top: 0;
+        color: #1e40af;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Diagnostic Compte Parent</h1>
+
+    <div class="card instructions">
+      <h3>Instructions</h3>
+      <ol style="margin-left: 20px; line-height: 1.8">
+        <li>Remplissez le formulaire ci-dessous avec l'email du parent</li>
+        <li>Cliquez sur "Verifier Compte" pour voir l'etat</li>
+        <li>Si le role manque dans app_metadata, utilisez "Reparer Metadata"</li>
+        <li>Si necessaire, utilisez "Reinitialiser Mot de Passe"</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Actions Rapides</h2>
+
+      <div class="form-group">
+        <label>Supabase URL</label>
+        <input type="text" id="supabaseUrl" value="https://mdfzmdddmwpbqmkxomdb.supabase.co" />
+      </div>
+
+      <div class="form-group">
+        <label>Supabase Service Role Key</label>
+        <input type="password" id="serviceKey" value="" placeholder="eyJh..." />
+        <p style="font-size: 12px; color: #64748b; margin-top: 5px">
+          La cle est dans apps/web/.env.local ou dans Dashboard Supabase - Settings - API
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label>Email du Parent</label>
+        <input type="email" id="email" value="fadiala@gmail.com" />
+      </div>
+
+      <div class="grid">
+        <div class="form-group">
+          <label>Nouveau Mot de Passe</label>
+          <input type="text" id="newPassword" value="Parent123!" />
+        </div>
+        <div class="form-group">
+          <label>Prenom</label>
+          <input type="text" id="firstName" value="Fadiala" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Nom</label>
+        <input type="text" id="lastName" value="Parent" />
+      </div>
+
+      <div style="margin-top: 20px">
+        <button onclick="checkAccount()">Verifier Compte</button>
+        <button onclick="fixMetadata()" class="btn-fix">
+          Reparer Metadata (SANS mot de passe)
+        </button>
+        <button onclick="resetPassword()">Reinitialiser Mot de Passe</button>
+        <button onclick="testLogin()">Tester Connexion</button>
+      </div>
+    </div>
+
+    <div id="result" class="result" style="display: none"></div>
+
+    <script>
+      const supabaseUrlInput = document.getElementById('supabaseUrl')
+      const serviceKeyInput = document.getElementById('serviceKey')
+      const emailInput = document.getElementById('email')
+      const newPasswordInput = document.getElementById('newPassword')
+      const resultDiv = document.getElementById('result')
+
+      function showResult(message, type = 'info') {
+        resultDiv.style.display = 'block'
+        resultDiv.className = 'result ' + type
+        resultDiv.textContent = message
+      }
+
+      async function checkAccount() {
+        if (!supabaseUrlInput.value || !serviceKeyInput.value) {
+          showResult('ERREUR: Veuillez remplir Supabase URL et Service Role Key', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('Verification en cours...', 'info')
+
+        try {
+          const authResponse = await fetch(supabaseUrlInput.value + '/auth/v1/admin/users', {
+            headers: {
+              apikey: serviceKeyInput.value,
+              Authorization: 'Bearer ' + serviceKeyInput.value,
+            },
+          })
+          const authData = await authResponse.json()
+          const authUser = authData.users && authData.users.find((u) => u.email === email)
+
+          const usersResponse = await fetch(
+            supabaseUrlInput.value + '/rest/v1/users?email=eq.' + email,
+            {
+              headers: {
+                apikey: serviceKeyInput.value,
+                Authorization: 'Bearer ' + serviceKeyInput.value,
+              },
+            }
+          )
+          const usersData = await usersResponse.json()
+          const userRecord = usersData[0]
+
+          const parentsResponse = await fetch(
+            supabaseUrlInput.value + '/rest/v1/parents?email=eq.' + email,
+            {
+              headers: {
+                apikey: serviceKeyInput.value,
+                Authorization: 'Bearer ' + serviceKeyInput.value,
+              },
+            }
+          )
+          const parentsData = await parentsResponse.json()
+          const parentRecord = parentsData[0]
+
+          let result = '=== RESULTAT DU DIAGNOSTIC ===\n\n'
+          result += 'Email: ' + email + '\n\n'
+
+          if (authUser) {
+            result += 'OK Auth User trouve\n'
+            result += '   ID: ' + authUser.id + '\n'
+            result += '   Email confirme: ' + (authUser.email_confirmed_at ? 'OK' : 'NON') + '\n'
+            result +=
+              '   Role (user_metadata): ' +
+              ((authUser.user_metadata && authUser.user_metadata.role) || 'MANQUANT') +
+              '\n'
+            result +=
+              '   Role (app_metadata): ' +
+              ((authUser.app_metadata && authUser.app_metadata.role) || 'MANQUANT') +
+              '\n\n'
+          } else {
+            result += 'ERREUR Auth User NON trouve\n\n'
+          }
+
+          if (userRecord) {
+            result += 'OK Users table record trouve\n'
+            result += '   ID: ' + userRecord.id + '\n'
+            result += '   School ID: ' + userRecord.school_id + '\n\n'
+          } else {
+            result += 'ERREUR Users table record NON trouve\n\n'
+          }
+
+          if (parentRecord) {
+            result += 'OK Parent record trouve\n'
+            result += '   ID: ' + parentRecord.id + '\n'
+            result += '   User ID: ' + parentRecord.user_id + '\n\n'
+          } else {
+            result += 'ERREUR Parent record NON trouve\n\n'
+          }
+
+          if (authUser && (!authUser.user_metadata || !authUser.user_metadata.role)) {
+            result += 'WARNING: Role MANQUANT dans user_metadata!\n'
+            result += 'SOLUTION: Utilisez le bouton "Reparer Metadata"\n\n'
+          }
+
+          if (authUser && (!authUser.app_metadata || !authUser.app_metadata.role)) {
+            result += 'WARNING: Role MANQUANT dans app_metadata!\n'
+            result += 'SOLUTION: Cliquez sur le bouton VERT "Reparer Metadata"\n\n'
+          }
+
+          showResult(result, authUser ? 'success' : 'warning')
+        } catch (error) {
+          showResult('ERREUR: ' + error.message, 'error')
+        }
+      }
+
+      async function fixMetadata() {
+        if (!supabaseUrlInput.value) {
+          showResult('ERREUR: Veuillez remplir Supabase URL', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('Reparation du metadata en cours...', 'info')
+
+        try {
+          const response = await fetch('http://localhost:3001/api/parents/fix-metadata', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: email }),
+          })
+
+          const data = await response.json()
+
+          if (response.ok && data.success) {
+            showResult(
+              'SUCCES: app_metadata repare!\n\n' +
+                'Email: ' +
+                email +
+                '\n' +
+                'Nouveau app_metadata: ' +
+                JSON.stringify(data.newAppMetadata, null, 2) +
+                '\n\n' +
+                'Maintenant, essayez de vous connecter sur:\n' +
+                'http://localhost:3001/login',
+              'success'
+            )
+          } else {
+            showResult(
+              'ERREUR: Impossible de reparer le metadata\n\n' + JSON.stringify(data, null, 2),
+              'error'
+            )
+          }
+        } catch (error) {
+          showResult('ERREUR: ' + error.message, 'error')
+        }
+      }
+
+      async function resetPassword() {
+        if (!supabaseUrlInput.value || !serviceKeyInput.value) {
+          showResult('ERREUR: Veuillez remplir Supabase URL et Service Role Key', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('Reinitialisation du mot de passe en cours...', 'info')
+
+        try {
+          const authResponse = await fetch(supabaseUrlInput.value + '/auth/v1/admin/users', {
+            headers: {
+              apikey: serviceKeyInput.value,
+              Authorization: 'Bearer ' + serviceKeyInput.value,
+            },
+          })
+          const authData = await authResponse.json()
+          const authUser = authData.users && authData.users.find((u) => u.email === email)
+
+          if (!authUser) {
+            showResult(
+              'ERREUR: Utilisateur non trouve. Impossible de reinitialiser le mot de passe.',
+              'error'
+            )
+            return
+          }
+
+          const resetResponse = await fetch(
+            supabaseUrlInput.value + '/auth/v1/admin/users/' + authUser.id,
+            {
+              method: 'PUT',
+              headers: {
+                apikey: serviceKeyInput.value,
+                Authorization: 'Bearer ' + serviceKeyInput.value,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                password: newPasswordInput.value,
+                email_confirm: true,
+              }),
+            }
+          )
+
+          if (resetResponse.ok) {
+            showResult(
+              'SUCCES: Mot de passe reinitialise!\n\n' +
+                'Email: ' +
+                email +
+                '\n' +
+                'Nouveau mot de passe: ' +
+                newPasswordInput.value +
+                '\n\n' +
+                'Maintenant, essayez de vous connecter sur:\n' +
+                'http://localhost:3001/login',
+              'success'
+            )
+          } else {
+            const errorData = await resetResponse.json()
+            showResult('ERREUR: ' + JSON.stringify(errorData), 'error')
+          }
+        } catch (error) {
+          showResult('ERREUR: ' + error.message, 'error')
+        }
+      }
+
+      async function testLogin() {
+        if (!supabaseUrlInput.value) {
+          showResult('ERREUR: Veuillez remplir Supabase URL', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('Test de connexion en cours...', 'info')
+
+        try {
+          const response = await fetch(
+            supabaseUrlInput.value + '/auth/v1/token?grant_type=password',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                email: email,
+                password: newPasswordInput.value,
+              }),
+            }
+          )
+
+          const data = await response.json()
+
+          if (response.ok && data.access_token) {
+            showResult(
+              'SUCCES: Connexion reussie!\n\n' +
+                'User: ' +
+                (data.user && data.user.email) +
+                '\n' +
+                'Role: ' +
+                (data.user && data.user.user_metadata && data.user.user_metadata.role) +
+                '\n' +
+                'App Role: ' +
+                (data.user && data.user.app_metadata && data.user.app_metadata.role),
+              'success'
+            )
+          } else {
+            showResult(
+              'ECHEC de la connexion\n\n' +
+                'Erreur: ' +
+                (data.error_description || JSON.stringify(data)),
+              'error'
+            )
+          }
+        } catch (error) {
+          showResult('ERREUR: ' + error.message, 'error')
+        }
+      }
+    </script>
+  </body>
+</html>

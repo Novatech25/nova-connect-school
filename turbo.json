@@ -1,0 +1,37 @@
+{
+  "$schema": "https://turborepo.org/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "dist/**", ".expo/**", "!.next/cache/**"]
+    },
+    "build:pwa": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "!dist/cache/**"],
+      "env": ["EXPO_PUBLIC_API_URL", "EXPO_PUBLIC_SUPABASE_URL", "EXPO_PUBLIC_VAPID_PUBLIC_KEY"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "type-check": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:pwa": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "audit:pwa": {
+      "dependsOn": ["build:pwa"],
+      "outputs": ["lighthouse-report.json"]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

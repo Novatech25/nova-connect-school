@@ -1,0 +1,10 @@
+Class,Subject,Teacher,Day of Week,Start Time,End Time,Room
+Grade 10A,Mathematics,Mr. Smith,Monday,08:00,09:30,Room 101
+Grade 10A,English,Ms. Johnson,Monday,09:45,11:15,Room 102
+Grade 10A,Science,Dr. Lee,Monday,13:00,14:30,Lab A
+Grade 11B,Mathematics,Mr. Smith,Tuesday,08:00,09:30,Room 101
+Grade 11B,History,Mrs. Davis,Tuesday,09:45,11:15,Room 103
+Grade 11B,Literature,Ms. Johnson,Tuesday,13:00,14:30,Room 102
+Grade 12C,Physics,Dr. Lee,Wednesday,08:00,09:30,Lab B
+Grade 12C,Chemistry,Dr. Lee,Wednesday,09:45,11:30,Lab A
+Grade 12C,Mathematics,Mr. Smith,Wednesday,13:00,14:30,Room 101

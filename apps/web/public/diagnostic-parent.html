@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diagnostic Parent - NovaConnect</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h1 {
+        color: #1e293b;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #334155;
+        margin: 20px 0 10px 0;
+        font-size: 1.2em;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #475569;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 12px 24px;
+        background: #0f172a;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+      button:hover {
+        background: #1e293b;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .result {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 20px;
+        font-family: monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      .error {
+        background: #fef2f2;
+        color: #dc2626;
+        border-color: #fecaca;
+      }
+      .success {
+        background: #f0fdf4;
+        color: #16a34a;
+        border-color: #bbf7d0;
+      }
+      .warning {
+        background: #fffbeb;
+        color: #ca8a04;
+        border-color: #fde68a;
+      }
+      .instructions {
+        background: #eff6ff;
+        border-left: 4px solid #3b82f6;
+        padding: 15px;
+        margin-bottom: 20px;
+      }
+      .instructions h3 {
+        margin-top: 0;
+        color: #1e40af;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🔍 Diagnostic Compte Parent</h1>
+
+    <div class="card instructions">
+      <h3>📋 Instructions</h3>
+      <ol style="margin-left: 20px; line-height: 1.8">
+        <li>Remplissez le formulaire ci-dessus avec l'email du parent</li>
+        <li>Cliquez sur <strong>"Vérifier Compte"</strong> pour voir l'état</li>
+        <li>Si nécessaire, utilisez <strong>"Réinitialiser Mot de Passe"</strong></li>
+        <li>Pour les problèmes complexes, suivez les instructions SQL manuelles</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>🔧 Actions Rapides</h2>
+
+      <div class="form-group">
+        <label>Supabase URL (depuis .env)</label>
+        <input
+          type="text"
+          id="supabaseUrl"
+          value="https://mdfzmdddmwpbqmkxomdb.supabase.co"
+          placeholder="https://xxx.supabase.co"
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Supabase Service Role Key (depuis .env)</label>
+        <input type="password" id="serviceKey" value="" placeholder="eyJh..." />
+      </div>
+
+      <div class="form-group">
+        <label>Email du Parent à diagnostiquer</label>
+        <input type="email" id="email" value="fadiala@gmail.com" />
+      </div>
+
+      <div class="grid">
+        <div class="form-group">
+          <label>Nouveau Mot de Passe</label>
+          <input type="text" id="newPassword" value="Parent123!" placeholder="Parent123!" />
+        </div>
+        <div class="form-group">
+          <label>Prénom</label>
+          <input type="text" id="firstName" value="Fadiala" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Nom</label>
+        <input type="text" id="lastName" value="Parent" />
+      </div>
+
+      <div class="form-group">
+        <label>School ID (optionnel)</label>
+        <input type="text" id="schoolId" placeholder="UUID de l'école" />
+      </div>
+
+      <div class="form-group">
+        <label>Student ID (optionnel)</label>
+        <input type="text" id="studentId" placeholder="UUID de l'étudiant" />
+      </div>
+
+      <div style="margin-top: 20px">
+        <button onclick="checkAccount()">🔍 Vérifier Compte</button>
+        <button onclick="resetPassword()">🔑 Réinitialiser Mot de Passe</button>
+        <button onclick="createAccount()">➕ Créer Compte</button>
+        <button onclick="testLogin()">🔐 Tester Connexion</button>
+      </div>
+    </div>
+
+    <div id="result" class="result" style="display: none"></div>
+
+    <div class="card">
+      <h2>📝 Instructions SQL Manuelles</h2>
+      <p style="margin-bottom: 15px">
+        Si les actions rapides ne fonctionnent pas, suivez ces étapes:
+      </p>
+
+      <ol style="margin-left: 20px; line-height: 2">
+        <li>Ouvrez le fichier <code>supabase/diagnostic_parent_manual.sql</code></li>
+        <li>Remplacez <code>'fadiala@gmail.com'</code> par l'email du parent</li>
+        <li>
+          Ouvrez la console Supabase:
+          <a href="https://supabase.com/dashboard" target="_blank">dashboard.supabase.com</a>
+        </li>
+        <li>Allez dans l'onglet SQL Editor</li>
+        <li>Collez et exécutez les requêtes ÉTAPE 1 à 4 (lecture seule)</li>
+        <li>Analysez les résultats</li>
+        <li>Si le rôle manque, exécutez les requêtes ÉTAPE 5 et 6</li>
+        <li>Pour réinitialiser le mot de passe, exécutez la commande CLI indiquée dans ÉTAPE 7</li>
+      </ol>
+
+      <h3 style="margin-top: 20px">Commande CLI pour réinitialiser le mot de passe:</h3>
+      <div class="form-group">
+        <textarea id="cliCommand" rows="4" readonly style="background: #f1f5f9; color: #334155">
+supabase auth admin update-user USER_ID --password "NOUVEAU_MOT_DE_PASSE"
+      </textarea
+        >
+      </div>
+    </div>
+
+    <script>
+      const supabaseUrl = document.getElementById('supabaseUrl')
+      const serviceKey = document.getElementById('serviceKey')
+      const emailInput = document.getElementById('email')
+      const newPasswordInput = document.getElementById('newPassword')
+      const firstNameInput = document.getElementById('firstName')
+      const lastNameInput = document.getElementById('lastName')
+      const schoolIdInput = document.getElementById('schoolId')
+      const studentIdInput = document.getElementById('studentId')
+      const resultDiv = document.getElementById('result')
+      const cliCommand = document.getElementById('cliCommand')
+
+      function showResult(message, type = 'info') {
+        resultDiv.style.display = 'block'
+        resultDiv.className = `result ${type}`
+        resultDiv.textContent = message
+      }
+
+      async function checkAccount() {
+        if (!supabaseUrl.value || !serviceKey.value) {
+          showResult('❌ Veuillez remplir Supabase URL et Service Role Key', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('🔍 Vérification en cours...', 'info')
+
+        try {
+          // Check auth.users
+          const authResponse = await fetch(`${supabaseUrl.value}/auth/v1/admin/users`, {
+            headers: {
+              apikey: serviceKey.value,
+              Authorization: `Bearer ${serviceKey.value}`,
+            },
+          })
+          const authData = await authResponse.json()
+          const authUser = authData.users?.find((u) => u.email === email)
+
+          // Check users table
+          const usersResponse = await fetch(
+            `${supabaseUrl.value}/rest/v1/users?email=eq.${email}`,
+            {
+              headers: {
+                apikey: serviceKey.value,
+                Authorization: `Bearer ${serviceKey.value}`,
+              },
+            }
+          )
+          const usersData = await usersResponse.json()
+          const userRecord = usersData[0]
+
+          // Check parents table
+          const parentsResponse = await fetch(
+            `${supabaseUrl.value}/rest/v1/parents?email=eq.${email}`,
+            {
+              headers: {
+                apikey: serviceKey.value,
+                Authorization: `Bearer ${serviceKey.value}`,
+              },
+            }
+          )
+          const parentsData = await parentsResponse.json()
+          const parentRecord = parentsData[0]
+
+          let result = '=== RÉSULTAT DU DIAGNOSTIC ===\n\n'
+          result += `📧 Email: ${email}\n\n`
+
+          if (authUser) {
+            result += '✅ Auth User trouvé\n'
+            result += `   ID: ${authUser.id}\n`
+            result += `   Email confirmé: ${authUser.email_confirmed_at ? '✅' : '❌'}\n`
+            result += `   Rôle (user_metadata): ${authUser.user_metadata?.role || '❌ Manquant'}\n`
+            result += `   Rôle (app_metadata): ${authUser.app_metadata?.role || '❌ Manquant'}\n\n`
+          } else {
+            result += '❌ Auth User NON trouvé\n\n'
+          }
+
+          if (userRecord) {
+            result += '✅ Users table record trouvé\n'
+            result += `   ID: ${userRecord.id}\n`
+            result += `   School ID: ${userRecord.school_id}\n\n`
+          } else {
+            result += '❌ Users table record NON trouvé\n\n'
+          }
+
+          if (parentRecord) {
+            result += '✅ Parent record trouvé\n'
+            result += `   ID: ${parentRecord.id}\n`
+            result += `   User ID: ${parentRecord.user_id}\n\n`
+          } else {
+            result += '❌ Parent record NON trouvé\n\n'
+          }
+
+          if (authUser) {
+            cliCommand.value = `supabase auth admin update-user ${authUser.id} --password "${newPasswordInput.value}"`
+          }
+
+          showResult(result, authUser ? 'success' : 'warning')
+        } catch (error) {
+          showResult(`❌ Erreur: ${error.message}`, 'error')
+        }
+      }
+
+      async function resetPassword() {
+        if (!supabaseUrl.value || !serviceKey.value) {
+          showResult('❌ Veuillez remplir Supabase URL et Service Role Key', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('🔑 Réinitialisation du mot de passe en cours...', 'info')
+
+        try {
+          // First find the user
+          const authResponse = await fetch(`${supabaseUrl.value}/auth/v1/admin/users`, {
+            headers: {
+              apikey: serviceKey.value,
+              Authorization: `Bearer ${serviceKey.value}`,
+            },
+          })
+          const authData = await authResponse.json()
+          const authUser = authData.users?.find((u) => u.email === email)
+
+          if (!authUser) {
+            showResult(
+              '❌ Utilisateur non trouvé. Impossible de réinitialiser le mot de passe.',
+              'error'
+            )
+            return
+          }
+
+          // Reset password using Supabase Management API
+          const resetResponse = await fetch(
+            `${supabaseUrl.value}/auth/v1/admin/users/${authUser.id}`,
+            {
+              method: 'PUT',
+              headers: {
+                apikey: serviceKey.value,
+                Authorization: `Bearer ${serviceKey.value}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                password: newPasswordInput.value,
+                email_confirm: true,
+              }),
+            }
+          )
+
+          if (resetResponse.ok) {
+            showResult(
+              `✅ Mot de passe réinitialisé avec succès!\nEmail: ${email}\nNouveau mot de passe: ${newPasswordInput.value}`,
+              'success'
+            )
+          } else {
+            const errorData = await resetResponse.json()
+            showResult(
+              `❌ Erreur lors de la réinitialisation: ${JSON.stringify(errorData)}`,
+              'error'
+            )
+          }
+        } catch (error) {
+          showResult(`❌ Erreur: ${error.message}`, 'error')
+        }
+      }
+
+      async function createAccount() {
+        showResult('⚠️ Pour créer un compte, utilisez la page admin:', 'warning')
+        showResult('http://localhost:3001/admin/students/[ID_STUDENT]/parents', 'warning')
+      }
+
+      async function testLogin() {
+        if (!supabaseUrl.value) {
+          showResult('❌ Veuillez remplir Supabase URL', 'error')
+          return
+        }
+
+        const email = emailInput.value
+        showResult('🔐 Test de connexion en cours...', 'info')
+
+        try {
+          const response = await fetch(`${supabaseUrl.value}/auth/v1/token?grant_type=password`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: email,
+              password: newPasswordInput.value,
+            }),
+          })
+
+          const data = await response.json()
+
+          if (response.ok && data.access_token) {
+            showResult(
+              `✅ Connexion réussie!\n\nUser: ${data.user?.email}\nRole: ${data.user?.user_metadata?.role || data.user?.app_metadata?.role}`,
+              'success'
+            )
+          } else {
+            showResult(
+              `❌ Échec de la connexion\n\nErreur: ${data.error_description || JSON.stringify(data)}`,
+              'error'
+            )
+          }
+        } catch (error) {
+          showResult(`❌ Erreur: ${error.message}`, 'error')
+        }
+      }
+    </script>
+  </body>
+</html>

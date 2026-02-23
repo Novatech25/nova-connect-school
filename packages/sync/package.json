@@ -1,0 +1,38 @@
+{
+  "name": "@novaconnect/sync",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./queue": "./src/queue/index.ts",
+    "./sync": "./src/sync/index.ts",
+    "./hooks": "./src/hooks/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint . --ext .ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "idb": "^8.0.3"
+  },
+  "devDependencies": {
+    "@novaconnect/config": "workspace:*",
+    "@novaconnect/core": "workspace:*",
+    "@novaconnect/data": "workspace:*",
+    "@types/node": "^25.0.9",
+    "@types/react": "^18.2.6",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    }
+  }
+}

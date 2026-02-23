@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "NovaConnect",
+    "slug": "novaconnect",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "NovaConnect a besoin d'accéder à votre position pour valider le cahier de texte et la présence.",
+          "locationAlwaysAndWhenInUsePermission": "NovaConnect a besoin d'accéder à votre position en arrière-plan pour les fonctionnalités de présence."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#3b82f6",
+      "androidMode": "default",
+      "androidCollapsedTitle": "NovaConnect"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.novaconnect.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.novaconnect.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static",
+      "outputDirectory": "dist",
+      "serviceWorker": {
+        "enabled": true,
+        "scope": "/"
+      },
+      "offline": true,
+      "startUrl": "/?source=pwa",
+      "display": "standalone",
+      "orientation": "portrait"
+    },
+    "platforms": ["ios", "android", "web"]
+  }
+}

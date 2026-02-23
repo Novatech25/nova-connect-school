@@ -1,0 +1,5 @@
+First Name,Last Name,Matricule,Email,Phone,Date of Birth,Class,Parent Name,Parent Phone,Gender,Address
+John,Doe,STU001,john.doe@example.com,+1234567890,2005-03-15,Grade 10A,Jane Doe,+1234567891,Male,123 Main St
+Jane,Smith,STU002,jane.smith@example.com,+1234567892,2004-07-22,Grade 11B,Robert Smith,+1234567893,Female,456 Oak Ave
+Michael,Johnson,STU003,michael.j@example.com,+1234567894,2005-11-08,Grade 10A,Sarah Johnson,+1234567895,Male,789 Pine Rd
+Emily,Brown,STU004,emily.brown@example.com,+1234567896,2004-05-30,Grade 12C,David Brown,+1234567897,Female,321 Elm St

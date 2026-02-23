@@ -1,0 +1,127 @@
+# ==============================================
+# NovaConnect Gateway - Docker Compose
+# Configuration pour déploiement production
+# ==============================================
+
+services:
+  # ============================================
+  # Gateway Service
+  # ============================================
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: novaconnect-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-3001}:3001"
+    environment:
+      # Configuration de base
+      - NODE_ENV=production
+      - PORT=3001
+
+      # Base de données
+      - DATABASE_PATH=/app/data
+
+      # Identifiant de l'école
+      - SCHOOL_ID=${SCHOOL_ID}
+
+      # Configuration Supabase (fallback cloud)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+
+      # Configuration de la licence
+      - LICENSE_FILE=${LICENSE_FILE:-/app/data/license.json}
+
+      # Intervalle de synchronisation (ms)
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-30000}
+
+      # Niveau de log
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    volumes:
+      # Persistance des données
+      - gateway-data:/app/data
+      # Logs
+      - gateway-logs:/app/logs
+      # Licence (optionnel)
+      - ${LICENSE_FILE:-./license.json}:/app/data/license.json:ro
+
+    networks:
+      - novaconnect-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits (optionnel, pour Raspberry Pi)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================
+  # Watchtower - Auto-update des containers
+  # ============================================
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: novaconnect-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_CONFIG:-~/.docker/config.json}:/config.json:ro
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - WATCHTOWER_INCLUDE_STOPPED=false
+    profiles:
+      - monitoring
+    networks:
+      - novaconnect-network
+
+  # ============================================
+  # Dozzle - Logs viewer (optionnel)
+  # ============================================
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: novaconnect-logs
+    restart: unless-stopped
+    ports:
+      - "${DOZZLE_PORT:-8080}:8080"
+    environment:
+      - DOZZLE_LEVELS=info,warn,error
+      - DOZZLE_TAILSIZE=300
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - novaconnect-network
+    profiles:
+      - monitoring
+
+networks:
+  novaconnect-network:
+    driver: bridge
+    name: novaconnect-network
+
+volumes:
+  gateway-data:
+    driver: local
+    name: novaconnect-gateway-data
+  gateway-logs:
+    driver: local
+    name: novaconnect-gateway-logs

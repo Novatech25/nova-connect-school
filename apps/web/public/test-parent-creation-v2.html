@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Creation Compte Parent v2 - NovaConnect</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        max-width: 900px;
+        margin: 40px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h1 {
+        color: #1e293b;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #334155;
+        margin: 20px 0 10px 0;
+        font-size: 1.2em;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #475569;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 12px 24px;
+        background: #0f172a;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+      button:hover {
+        background: #1e293b;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-test {
+        background: #059669 !important;
+      }
+      .btn-test:hover {
+        background: #047857 !important;
+      }
+      .result {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 20px;
+        font-family: monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 500px;
+        overflow-y: auto;
+      }
+      .error {
+        background: #fef2f2;
+        color: #dc2626;
+        border-color: #fecaca;
+      }
+      .success {
+        background: #f0fdf4;
+        color: #16a34a;
+        border-color: #bbf7d0;
+      }
+      .warning {
+        background: #fffbeb;
+        color: #ca8a04;
+        border-color: #fde68a;
+      }
+      .logs {
+        background: #1e293b;
+        color: #e2e8f0;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 20px;
+        max-height: 600px;
+        overflow-y: auto;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Test Creation Compte Parent v2</h1>
+
+    <div class="card">
+      <h2>Instructions</h2>
+      <ol style="margin-left: 20px; line-height: 1.8">
+        <li>Remplissez le formulaire ci-dessous</li>
+        <li>Cliquez sur "Tester Creation"</li>
+        <li>Attendez les resultats (peut prendre quelques secondes)</li>
+        <li>Verifiez la section "Diagnostics Complets"</li>
+        <li>Consultez les "Logs Console" pour les details techniques</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Formulaire de Test</h2>
+
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="parent@example.com" />
+      </div>
+
+      <div class="form-group">
+        <label>Mot de passe</label>
+        <input type="text" id="password" value="Parent123!" />
+      </div>
+
+      <div style="margin-top: 20px">
+        <button onclick="testCreation()" class="btn-test">Tester Creation</button>
+        <button onclick="clearResults()">Effacer Resultats</button>
+      </div>
+    </div>
+
+    <div id="result" class="result" style="display: none"></div>
+
+    <div id="logs" class="logs" style="display: none">
+      <h3>Logs Console</h3>
+      <pre id="logContent" style="font-size: 11px"></pre>
+    </div>
+
+    <script>
+      let testCounter = 0;
+
+      function addLog(message) {
+        const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+        const logLine = `[${timestamp}] ${message}`;
+        const logContent = document.getElementById('logContent');
+        logContent.textContent = logLine + '\n' + logContent.textContent;
+      }
+
+      function showResult(message, type = 'info') {
+        const resultDiv = document.getElementById('result');
+        const logsDiv = document.getElementById('logs');
+
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'result ' + type;
+        resultDiv.textContent = message;
+
+        logsDiv.style.display = 'block';
+      }
+
+      function clearResults() {
+        document.getElementById('result').style.display = 'none';
+        document.getElementById('result').textContent = '';
+        document.getElementById('logs').style.display = 'none';
+        document.getElementById('logContent').textContent = '';
+      }
+
+      async function testCreation() {
+        testCounter++;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const firstName = 'Test';
+        const lastName = 'Parent';
+        const schoolId = '7ecfd6ce-1e22-40ac-9548-27613f1d43ce';
+        const studentId = '9449a257-ccef-41bd-a0ec-9c07227e8581';
+        const relationship = 'Parent';
+
+        addLog(`DEBUT DU TEST #${testCounter}`);
+        addLog(`Email: ${email}`);
+        addLog(`Password: ${password} (longueur: ${password.length})`);
+        addLog('');
+
+        try {
+          addLog('STEP 1: Envoi de la requete...');
+          const response = await fetch('/api/test-parent-login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: email,
+              password: password,
+              firstName: firstName,
+              lastName: lastName,
+              schoolId: schoolId,
+              studentId: studentId,
+              relationship: relationship,
+            }),
+          });
+
+          addLog(`Status: ${response.status} ${response.statusText}`);
+
+          if (!response.ok) {
+            addLog('ERREUR: Response not OK');
+            const errorData = await response.json();
+            showResult(`ERREUR: ${errorData.error || 'Inconnu'}`, 'error');
+            return;
+          }
+
+          const data = await response.json();
+          addLog('Response recue');
+          addLog('');
+
+          // Afficher le diagnostic
+          if (data.results) {
+            const verify = data.results.metadataVerification || {};
+            const authUser = data.results.authUser || {};
+            const loginTest = data.results.loginTest || {};
+
+            addLog('=== DIAGNOSTIC COMPLET ===');
+            addLog('');
+
+            addLog('Informations Utilisateur:');
+            addLog(`  - ID: ${authUser.id}`);
+            addLog(`  - Email: ${authUser.email}`);
+            addLog(`  - Cree le: ${authUser.created_at}`);
+            addLog(`  - Email confirme le: ${authUser.email_confirmed_at ? 'OUI' : 'NON'}`);
+            addLog('');
+
+            addLog('Metadonnees:');
+            const userMeta = authUser.user_metadata || {};
+            const appMeta = authUser.app_metadata || {};
+            addLog(`  user_metadata.role: ${userMeta.role ? '✅ ' + userMeta.role : '❌ MANQUANT'}`);
+            addLog(`  app_metadata.role: ${appMeta.role ? '✅ ' + appMeta.role : '❌ MANQUANT'}`);
+            addLog('');
+
+            addLog('Verification Metadonnees:');
+            addLog(`  - user_metadata.role OK: ${verify.has_user_metadata_role ? '✅' : '❌'}`);
+            addLog(`  - app_metadata.role OK: ${verify.has_app_metadata_role ? '✅' : '❌'}`);
+            addLog(`  - Email confirme: ${verify.is_email_confirmed ? '✅' : '❌'}`);
+            addLog('');
+
+            addLog('Test de Connexion:');
+            addLog(`  - Succes: ${loginTest.success ? '✅' : '❌'}`);
+            if (loginTest.error) {
+              addLog(`  - Erreur: ${loginTest.error}`);
+              addLog(`  - Code erreur: ${loginTest.error_code || 'N/A'}`);
+            }
+            addLog('');
+
+            // Message final
+            if (loginTest.success && verify.has_user_metadata_role && verify.has_app_metadata_role && verify.is_email_confirmed) {
+              showResult('✅ SUCCES!\n\nLe compte parent a ete cree CORRECTEMENT.\n- Role dans user_metadata: OK\n- Role dans app_metadata: OK\n- Email confirme: OK\n- Test de connexion: OK\n\nCONCLUSION: Le parent peut maintenant se connecter!', 'success');
+            } else {
+              let issues = '';
+              if (!verify.has_user_metadata_role) issues += '❌ user_metadata.role MANQUANT\n';
+              if (!verify.has_app_metadata_role) issues += '❌ app_metadata.role MANQUANT\n';
+              if (!verify.is_email_confirmed) issues += '❌ Email NON confirme\n';
+              if (!loginTest.success) issues += '❌ Test de connexion ECHOUE\n';
+
+              showResult(`❌ PROBLEME DETECTE\n\n${issues}\nCONCLUSION: Il y a un probleme avec la creation du compte parent.`, 'error');
+            }
+
+            addLog('');
+            addLog('=== FIN DU DIAGNOSTIC ===');
+          } else {
+            addLog('ATTENTION: data.results non present dans la response');
+            showResult('ATTENTION: La reponse API ne contient pas les resultats attendus', 'warning');
+          }
+
+        } else if (data.error) {
+          addLog(`ERREUR API: ${data.error}`);
+          showResult(`ERREUR: ${data.error}`, 'error');
+        } else {
+          addLog('ATTENTION: Structure de reponse inattendue');
+          showResult('ATTENTION: Structure de reponse API inattendue', 'warning');
+        }
+
+      } catch (error) {
+        addLog(`❌ Exception: ${error.message}`);
+        showResult(`ERREUR: ${error.message}`, 'error');
+      }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,59 @@
+# ==============================================
+# NovaConnect Gateway - Systemd Service
+# ==============================================
+#
+# Installation:
+#   sudo cp deploy/systemd/novaconnect-gateway.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable novaconnect-gateway
+#   sudo systemctl start novaconnect-gateway
+#
+# Commandes utiles:
+#   sudo systemctl status novaconnect-gateway
+#   sudo systemctl restart novaconnect-gateway
+#   sudo systemctl stop novaconnect-gateway
+#   journalctl -u novaconnect-gateway -f
+# ==============================================
+
+[Unit]
+Description=NovaConnect Gateway LAN Service
+Documentation=https://docs.novaconnect.com
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gateway
+Group=gateway
+WorkingDirectory=/var/www/novaconnect-gateway
+Environment="NODE_ENV=production"
+Environment="PORT=3001"
+Environment="DATABASE_PATH=/var/www/novaconnect-gateway/data"
+
+# Exécuter avec Bun
+ExecStart=/usr/local/bin/bun run src/server.ts
+
+# Redémarrage automatique en cas de crash
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Timeout
+TimeoutStartSec=40
+TimeoutStopSec=30
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/novaconnect-gateway/data /var/www/novaconnect-gateway/logs
+
+# Logs
+StandardOutput=append:/var/www/novaconnect-gateway/logs/gateway.log
+StandardError=append:/var/www/novaconnect-gateway/logs/error.log
+SyslogIdentifier=novaconnect-gateway
+
+[Install]
+WantedBy=multi-user.target

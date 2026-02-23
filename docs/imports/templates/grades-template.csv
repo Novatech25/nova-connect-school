@@ -1,0 +1,7 @@
+Student Matricule,Subject Code,Period Name,Score,Max Score,Grade Type,Title,Coefficient,Weight,Comments,Graded Date,Class Name,Teacher Email
+STU001,MAT101,Trimestre 1,15,20,exam,Controle 1,2,1,Bon travail,2024-11-15,6e A,prof.math@ecole.com
+STU001,ENG102,Trimestre 1,18,20,assignment,Devoir 1,1,1,Tres bien,2024-11-16,6e A,prof.anglais@ecole.com
+STU002,MAT101,Trimestre 1,12,20,quiz,Quiz 1,1,1,Doit progresser,2024-11-15,6e A,prof.math@ecole.com
+STU002,ENG102,Trimestre 1,14,20,homework,Exercice maison,1,1,Effort correct,2024-11-16,6e A,prof.anglais@ecole.com
+STU003,SCI103,Trimestre 1,17,20,project,Projet scientifique,2,1,Bon niveau,2024-11-17,6e B,prof.sciences@ecole.com
+STU004,MAT101,Trimestre 1,10,20,composition,Composition 1,2,1,Peut mieux faire,2024-11-15,6e B,prof.math@ecole.com

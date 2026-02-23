@@ -1,0 +1,48 @@
+{
+  "name": "@novaconnect/ui",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./web": "./src/web/index.ts",
+    "./mobile": "./src/mobile/index.ts",
+    "./shared": "./src/shared/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint . --ext .ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "react-hot-toast": "^2.4.1",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@novaconnect/config": "workspace:*",
+    "@novaconnect/core": "workspace:*",
+    "@types/react": "^18.2.6",
+    "@types/react-dom": "^18.2.24",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-native": "^0.76.9",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-native": ">=0.70.0"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  }
+}
