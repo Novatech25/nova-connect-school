@@ -54,10 +54,6 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/room-assignment-notify",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/room-assignment-calculate",
       "schedule": "0 18 * * *"
     }
