@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Calendar,
@@ -26,11 +26,9 @@ import {
 } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useToast } from '@/hooks/use-toast';
-import {
-  useAuthContext,
-  useStudentAttendance,
-} from '@novaconnect/data';
-import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isSameMonth, getDaysInMonth } from 'date-fns';
+import { useAuthContext, useStudentAttendance } from '@novaconnect/data';
+import { getStudentProfileSecure, getAcademicYearsSecure } from '@/actions/payment-actions';
+import { format, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function StudentAttendancePage() {
@@ -45,6 +43,26 @@ export default function StudentAttendancePage() {
   // Filters
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
+  const [selectedDate, setSelectedDate] = useState<string>(''); // filtre date spécifique
+
+  // Academic Year filter
+  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [selectedYearId, setSelectedYearId] = useState<string>('all');
+
+  useEffect(() => {
+    async function loadYears() {
+      if (!user?.id) return;
+      const { data: studentData } = await getStudentProfileSecure(user.id);
+      if (!studentData?.school_id) return;
+      const { data: years } = await getAcademicYearsSecure(studentData.school_id);
+      if (years && years.length > 0) {
+        setAcademicYears(years);
+        const current = years.find((y: any) => y.isCurrent || y.is_current || y.current);
+        if (current) setSelectedYearId(current.id);
+      }
+    }
+    loadYears();
+  }, [user?.id]);
 
   // Fetch attendance records
   const { data: rawRecords = [], isLoading: isLoadingAttendance } = useStudentAttendance(
@@ -77,12 +95,20 @@ export default function StudentAttendancePage() {
 
   // Filter attendance records by month
   const filteredRecords = attendanceRecords.filter((record: any) => {
+    if (!record.date) return false;
     const recordDate = new Date(record.date);
     const recordMonth = format(recordDate, 'yyyy-MM');
+    const recordDateStr = record.date.split('T')[0];
 
-    if (selectedMonth !== recordMonth) return false;
+    // Filtre par date spécifique (prioritaire sur le mois)
+    if (selectedDate) {
+      if (recordDateStr !== selectedDate) return false;
+    } else {
+      // Filtre par mois
+      if (selectedMonth !== recordMonth) return false;
+    }
+
     if (selectedPeriod !== 'all' && record.period?.id !== selectedPeriod) return false;
-
     return true;
   });
 
@@ -330,18 +356,62 @@ export default function StudentAttendancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Année scolaire */}
+              {academicYears.length > 0 && (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <label className="text-xs font-medium text-gray-700">Année scolaire</label>
+                  <select
+                    value={selectedYearId}
+                    onChange={(e) => setSelectedYearId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                  >
+                    <option value="all">Toutes les années</option>
+                    {academicYears.map((y: any) => (
+                      <option key={y.id} value={y.id}>
+                        {y.name}{(y.isCurrent || y.is_current) ? ' (actuelle)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Month Filter */}
               <div className="space-y-1.5 sm:space-y-2">
                 <label className="text-xs font-medium text-gray-700">Mois</label>
                 <SearchableSelect
                   options={getMonthsList().map((month) => ({ value: month.value, label: month.label }))}
                   value={selectedMonth}
-                  onValueChange={setSelectedMonth}
+                  onValueChange={(v) => { setSelectedMonth(v); setSelectedDate(''); }}
                   placeholder="Sélectionner un mois"
                   searchPlaceholder="Rechercher un mois..."
                   allLabel="Sélectionner un mois"
                 />
+              </div>
+
+              {/* Date spécifique */}
+              <div className="space-y-1.5 sm:space-y-2">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3" />
+                  Date spécifique
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                  />
+                  {selectedDate && (
+                    <button
+                      onClick={() => setSelectedDate('')}
+                      className="h-8 sm:h-9 px-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 text-xs"
+                      title="Réinitialiser"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Period Filter */}
