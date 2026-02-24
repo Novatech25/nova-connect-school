@@ -1,8 +1,8 @@
 {
-  "buildCommand": "cd apps/web && pnpm build",
+  "buildCommand": "pnpm turbo run build --filter=@novaconnect/web...",
   "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "pnpm install --frozen-lockfile",
+  "installCommand": "pnpm install",
   "regions": ["cdg1"],
 
   "headers": [
