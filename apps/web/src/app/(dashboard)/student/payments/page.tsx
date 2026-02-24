@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { generatePaymentReceiptPDF } from "@/lib/paymentReceiptPdf";
 
 import { getStudentPaymentsSecure, getStudentFeeSchedulesSecure, getStudentProfileSecure, getAcademicYearsSecure } from "@/actions/payment-actions";
 
@@ -73,6 +74,7 @@ export default function StudentPaymentsPage() {
     const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>("all");
     const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
     const [selectedDate, setSelectedDate] = useState<string>(''); // filtre par date spécifique
+    const [downloadingId, setDownloadingId] = useState<string | null>(null); // ID du reçu en cours de téléchargement
 
     // --- 1. Fetch Student Profile ---
     const fetchStudentProfile = async () => {
@@ -258,17 +260,32 @@ export default function StudentPaymentsPage() {
     const uniqueAcademicYears = Array.from(new Set(displayedAcademicYears.map((y: any) => y.id)))
         .map(id => displayedAcademicYears.find((y: any) => y.id === id));
 
-    const handleDownloadReceipt = (paymentId: string) => {
-        toast({
-            title: "Téléchargement",
-            description: "Le reçu est en cours de génération...",
-        });
-        setTimeout(() => {
-            toast({
-                title: "Succès",
-                description: "Reçu téléchargé avec succès.",
+    const handleDownloadReceipt = async (payment: any) => {
+        if (downloadingId === payment.id) return;
+        setDownloadingId(payment.id);
+        try {
+            await generatePaymentReceiptPDF({
+                payment,
+                student: {
+                    first_name: student.first_name,
+                    last_name: student.last_name,
+                    matricule: student.matricule,
+                    enrollments: student.enrollments,
+                },
+                school: student.school || undefined,
+                totalDue,
+                totalPaid,
             });
-        }, 1500);
+        } catch (err) {
+            console.error('Erreur génération PDF:', err);
+            toast({
+                title: 'Erreur',
+                description: 'Impossible de générer le reçu PDF.',
+                variant: 'destructive',
+            });
+        } finally {
+            setDownloadingId(null);
+        }
     };
 
     const handlePayNow = () => {
@@ -567,14 +584,29 @@ export default function StudentPaymentsPage() {
                                                                 payment.payment_method === "BANK_TRANSFER" ? "Virement" : payment.payment_method}
                                                     </div>
                                                 </div>
-
-                                                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                                                <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
                                                     <div className="text-right">
                                                         <div className="font-bold text-green-700">+{Math.round(payment.amount).toLocaleString('fr-FR')} FCFA</div>
                                                         <div className="text-xs text-gray-500">Validé</div>
                                                     </div>
-                                                    <Button variant="ghost" size="icon" onClick={() => handleDownloadReceipt(payment.id)}>
-                                                        <Download className="h-4 w-4 text-gray-500" />
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        className="flex items-center gap-1.5 text-xs"
+                                                        disabled={downloadingId === payment.id}
+                                                        onClick={() => handleDownloadReceipt(payment)}
+                                                    >
+                                                        {downloadingId === payment.id ? (
+                                                            <>
+                                                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                                                <span className="hidden sm:inline">Génération...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Download className="h-3.5 w-3.5 text-gray-700" />
+                                                                <span className="hidden sm:inline">Reçu PDF</span>
+                                                            </>
+                                                        )}
                                                     </Button>
                                                 </div>
                                             </div>
