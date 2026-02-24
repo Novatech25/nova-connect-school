@@ -12,7 +12,11 @@
     "./queries": "./src/queries/index.ts",
     "./hooks": "./src/hooks/index.ts",
     "./helpers": "./src/helpers/index.ts",
-    "./providers": "./src/providers/index.ts"
+    "./providers": "./src/providers/index.ts",
+    "./services": "./src/services/index.ts",
+    "./services/createParentRecord": "./src/services/createParentRecord.ts",
+    "./services/createParentWithMetadata": "./src/services/createParentWithMetadata.ts",
+    "./types": "./src/types/index.ts"
   },
   "scripts": {
     "build": "tsc",
