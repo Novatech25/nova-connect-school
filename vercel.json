@@ -4,21 +4,7 @@
   "framework": "nextjs",
   "installCommand": "pnpm install",
   "regions": ["cdg1"],
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase-anon-key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key",
-    "NEXT_PUBLIC_APP_URL": "@app-url",
-    "NEXT_PUBLIC_SENTRY_DSN": "@sentry-dsn",
-    "SENTRY_DSN": "@sentry-dsn",
-    "SENTRY_AUTH_TOKEN": "@sentry-auth-token"
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase-anon-key"
-    }
-  },
+
   "headers": [
     {
       "source": "/(.*)",
