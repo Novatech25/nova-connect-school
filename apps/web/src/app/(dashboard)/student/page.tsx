@@ -24,10 +24,9 @@ import {
   useAuthContext,
   useGrades,
   useReportCards,
-  useSchedule,
+  usePlannedSessions,
   useAttendanceByStudent,
-  useStudentFeeSchedules,
-  useStudentPayments,
+  useFeeSchedules,
   useNotifications,
   useAssignments,
   useSchool,
@@ -62,10 +61,11 @@ export default function StudentDashboard() {
     studentId,
   });
 
-  // Fetch today's schedule
-  const { data: scheduleEntries = [] } = useSchedule(schoolId || '', {
-    startDate: currentDate.toISOString().split('T')[0],
-    endDate: currentDate.toISOString().split('T')[0],
+  // Fetch today's planned sessions
+  const todayStr = currentDate.toISOString().split('T')[0];
+  const { data: scheduleEntries = [] } = usePlannedSessions(schoolId || '', {
+    startDate: todayStr,
+    endDate: todayStr,
   });
 
   // Fetch attendance (absences de l'élève ce mois-ci)
@@ -77,9 +77,12 @@ export default function StudentDashboard() {
     endDate: lastDayOfMonth,
   });
 
-  // Fetch fee schedules (statut paiement) et paiements de l'élève
-  const { data: studentFeeSchedules = [] } = useStudentFeeSchedules(studentId || '', '');
-  const { data: studentPayments = [] } = useStudentPayments(studentId || '');
+  // Fetch fee schedules de l'élève pour calculer le statut de paiement
+  const { data: studentFeeSchedules = [] } = useFeeSchedules(
+    studentId
+      ? { schoolId: schoolId || '', studentId }
+      : { schoolId: '' } // désactivé si pas de studentId
+  );
 
   // Fetch notifications
   const { data: notifications = [] } = useNotifications(user?.id || '', {
@@ -116,26 +119,26 @@ export default function StudentDashboard() {
     return isCurrentStudent && (a.status === 'absent' || a.isAbsent);
   }).length || 0;
 
-  // Get payment status depuis les feeSchedules de l'élève
+  // Get today's classes (sessions du jour)
+  const todayClasses = (scheduleEntries as any[]) || [];
+
+  // Get payment status — même logique que accountant/payments
   const getPaymentStatus = () => {
     const schedules = studentFeeSchedules as any[];
     if (!schedules || schedules.length === 0) return { status: 'unknown', label: 'Non renseigné', color: 'gray' };
-    const hasOverdue = schedules.some((s: any) => s.status === 'overdue');
-    const hasPartial = schedules.some((s: any) => s.status === 'partial');
-    const allPaid = schedules.every((s: any) => s.status === 'paid');
-    if (allPaid) return { status: 'ok', label: 'À jour', color: 'green' };
-    if (hasOverdue) return { status: 'blocked', label: 'En retard', color: 'red' };
-    if (hasPartial) return { status: 'warning', label: 'Partiel', color: 'yellow' };
-    return { status: 'unknown', label: 'En attente', color: 'gray' };
+    const total = schedules.reduce((s: number, x: any) => s + (x.amount || 0), 0);
+    const paid = schedules.reduce((s: number, x: any) => s + (x.paidAmount || 0), 0);
+    const remaining = schedules.reduce((s: number, x: any) => s + (x.remainingAmount || 0), 0);
+    if (total <= 0) return { status: 'unknown', label: 'Aucun frais', color: 'gray' };
+    if (remaining <= 0) return { status: 'ok', label: 'À jour', color: 'green' };
+    if (paid > 0) return { status: 'warning', label: 'Partiel', color: 'yellow' };
+    return { status: 'blocked', label: 'Non payé', color: 'red' };
   };
 
   const paymentStatus = getPaymentStatus();
 
-  // Get today's classes
-  const todayClasses = scheduleEntries?.filter((entry: any) => {
-    const entryDate = new Date(entry.date);
-    return entryDate.toDateString() === currentDate.toDateString();
-  }) || [];
+
+
 
   // Recent grades (last 5)
   const recentGrades = grades
