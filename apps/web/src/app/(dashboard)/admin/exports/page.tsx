@@ -290,7 +290,7 @@ export default function ExportsAdminPage() {
   );
 }
 
-function ExportStatusBadge({ status }: { status: string }) {
+export function ExportStatusBadge({ status }: { status: string }) {
   const styles = {
     pending: 'bg-blue-100 text-blue-800',
     processing: 'bg-yellow-100 text-yellow-800',

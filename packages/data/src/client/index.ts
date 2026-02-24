@@ -63,3 +63,6 @@ export const createSupabaseClient = (): NovaConnectClient => {
 };
 
 export default getSupabaseClient;
+
+// Alias pour compatibilité avec les imports directs
+export const supabase = getSupabaseClient;

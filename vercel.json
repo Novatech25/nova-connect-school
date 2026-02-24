@@ -1,6 +1,5 @@
 {
   "buildCommand": "pnpm --filter @novaconnect/web run build",
-  "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
   "installCommand": "pnpm install",
   "regions": ["cdg1"],

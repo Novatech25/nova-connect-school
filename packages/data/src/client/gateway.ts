@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getBestGateway, type GatewayInfo } from '../helpers/gateway-discovery';
+export { getBestGateway, type GatewayInfo };
 
 export interface GatewayClientConfig {
   schoolId: string;
