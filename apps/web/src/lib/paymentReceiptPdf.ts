@@ -76,7 +76,9 @@ async function generateQRCode(data: string): Promise<string> {
 }
 
 function formatCurrency(amount: number): string {
-  return Math.round(amount).toLocaleString('fr-FR') + ' FCFA';
+  // Ex: 15000 -> "15 000" -> "15/000 FCFA"
+  const formatted = Math.round(amount).toLocaleString('fr-FR');
+  return formatted.replace(/\s+/g, '/') + ' FCFA';
 }
 
 function formatDate(dateStr: string): string {
@@ -282,19 +284,22 @@ export async function generatePaymentReceiptPDF(data: ReceiptData): Promise<void
   
   let rowY = y;
   for (let i = 0; i < 3; i++) {
+    const eleveRow = eleveRows[i] || ['', ''];
+    const paiementRow = paiementRows[i] || ['', ''];
+
     // Left col
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(c.textDark);
-    doc.text(eleveRows[i][0], col1X + 4, rowY);
+    doc.text(String(eleveRow[0]), col1X + 4, rowY);
     doc.setFont('helvetica', 'normal');
     // Align values
-    doc.text(eleveRows[i][1], col1X + 22, rowY);
+    doc.text(String(eleveRow[1]), col1X + 22, rowY);
     
     // Right col
     doc.setFont('helvetica', 'bold');
-    doc.text(paiementRows[i][0], col2X + 4, rowY);
+    doc.text(String(paiementRow[0]), col2X + 4, rowY);
     doc.setFont('helvetica', 'normal');
-    doc.text(paiementRows[i][1], col2X + 22, rowY);
+    doc.text(String(paiementRow[1]), col2X + 22, rowY);
     
     rowY += 6;
   }
@@ -350,11 +355,11 @@ export async function generatePaymentReceiptPDF(data: ReceiptData): Promise<void
     
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(c.textGray);
-    doc.text(desc, marginX + 4, y + 6);
+    doc.text(String(desc), marginX + 4, y + 6);
     
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(c.textDark);
-    doc.text(val, marginX + contentW - 4, y + 6, { align: 'right' });
+    doc.text(String(val), marginX + contentW - 4, y + 6, { align: 'right' });
     
     // light border bottom
     doc.setDrawColor(c.infoBg);
