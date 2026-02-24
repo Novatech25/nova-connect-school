@@ -30,7 +30,7 @@ import {
   useAssignments,
   useSchool,
 } from '@novaconnect/data';
-import { getStudentProfileSecure, getStudentFeeSchedulesSecure } from '@/actions/payment-actions';
+import { getStudentProfileSecure, getStudentFeeSchedulesSecure, getAcademicYearsSecure } from '@/actions/payment-actions';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -77,20 +77,40 @@ export default function StudentDashboard() {
     endDate: lastDayOfMonth,
   });
 
-  // Fetch fee schedules via Server Action (même méthode que student/payments)
+  // Fetch fee schedules + années scolaires via Server Actions
   const [studentFeeSchedules, setStudentFeeSchedules] = useState<any[]>([]);
+  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [selectedYearId, setSelectedYearId] = useState<string>('');
+
   useEffect(() => {
     async function loadFees() {
       if (!user?.id) return;
       // 1. Récupérer le profil étudiant lié à cet utilisateur
       const { data: studentData } = await getStudentProfileSecure(user.id);
       if (!studentData?.id) return;
-      // 2. Récupérer les fee schedules de cet étudiant
+      // 2. Charger les années scolaires
+      if (studentData.school_id) {
+        const { data: years } = await getAcademicYearsSecure(studentData.school_id);
+        if (years && years.length > 0) {
+          setAcademicYears(years);
+          // Sélectionner l'année courante par défaut
+          const currentYear = years.find((y: any) => y.isCurrent || y.is_current || y.current);
+          setSelectedYearId(currentYear?.id || years[0]?.id || '');
+        }
+      }
+      // 3. Récupérer les fee schedules de cet étudiant (toutes années)
       const { data } = await getStudentFeeSchedulesSecure(studentData.id, undefined);
       if (data) setStudentFeeSchedules(data);
     }
     loadFees();
   }, [user?.id]);
+
+  // Filtrer les fee schedules par année sélectionnée
+  const filteredFeeSchedules = selectedYearId
+    ? studentFeeSchedules.filter((f: any) =>
+        f.academic_year_id === selectedYearId || f.academicYearId === selectedYearId
+      )
+    : studentFeeSchedules;
 
   // Fetch notifications
   const { data: notifications = [] } = useNotifications(user?.id || '', {
@@ -132,7 +152,7 @@ export default function StudentDashboard() {
 
   // Get payment status — même logique que student/payments (champs snake_case Supabase)
   const getPaymentStatus = () => {
-    const schedules = studentFeeSchedules as any[];
+    const schedules = filteredFeeSchedules as any[];
     if (!schedules || schedules.length === 0) return { status: 'unknown', label: 'Non renseigné', color: 'gray' };
     const total = schedules.reduce((s: number, x: any) => s + (x.amount || 0), 0);
     // Server Action retourne des données Supabase brutes (snake_case)
@@ -218,6 +238,20 @@ export default function StudentDashboard() {
                 </Badge>
               )}
             </Button>
+            {/* Filtre Année Scolaire */}
+            {academicYears.length > 0 && (
+              <select
+                value={selectedYearId}
+                onChange={(e) => setSelectedYearId(e.target.value)}
+                className="rounded-lg border border-gray-200 bg-white px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none"
+              >
+                {academicYears.map((y: any) => (
+                  <option key={y.id} value={y.id}>
+                    {y.name}{(y.isCurrent || y.is_current) ? ' (★ actuelle)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <p className="mt-1.5 text-xs text-gray-500">
             {currentDate.toLocaleDateString('fr-FR', {
