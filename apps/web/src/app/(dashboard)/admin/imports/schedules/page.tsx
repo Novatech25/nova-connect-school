@@ -1,6 +1,6 @@
 "use client";
 
-import { Link } from "react";
+import Link from 'next/link';
 import { ArrowLeft, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
