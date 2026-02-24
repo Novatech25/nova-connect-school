@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen,
@@ -27,11 +27,9 @@ import {
 } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useToast } from '@/hooks/use-toast';
-import {
-  useAuthContext,
-  useAssignments,
-} from '@novaconnect/data';
-import { formatDistanceToNow, format, isPast, isBefore, addDays } from 'date-fns';
+import { useAuthContext, useAssignments } from '@novaconnect/data';
+import { getStudentProfileSecure, getAcademicYearsSecure } from '@/actions/payment-actions';
+import { formatDistanceToNow, format, isPast } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function StudentHomeworkPage() {
@@ -47,6 +45,26 @@ export default function StudentHomeworkPage() {
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'dueDate' | 'postedDate' | 'subject'>('dueDate');
+  const [selectedDate, setSelectedDate] = useState<string>(''); // filtre par date limite (dueDate)
+
+  // Academic Year filter
+  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [selectedYearId, setSelectedYearId] = useState<string>('all');
+
+  useEffect(() => {
+    async function loadYears() {
+      if (!user?.id) return;
+      const { data: studentData } = await getStudentProfileSecure(user.id);
+      if (!studentData?.school_id) return;
+      const { data: years } = await getAcademicYearsSecure(studentData.school_id);
+      if (years && years.length > 0) {
+        setAcademicYears(years);
+        const current = years.find((y: any) => y.isCurrent || y.is_current || y.current);
+        if (current) setSelectedYearId(current.id);
+      }
+    }
+    loadYears();
+  }, [user?.id]);
 
   // Fetch assignments
   const { data: assignments = [], isLoading: isLoadingAssignments } = useAssignments(
@@ -67,6 +85,13 @@ export default function StudentHomeworkPage() {
   // Filter assignments
   const filteredAssignments = assignments.filter((assignment: any) => {
     if (selectedSubject !== 'all' && assignment.subject?.id !== selectedSubject) return false;
+    // Filtre par année scolaire (si disponible sur l'assignment)
+    if (selectedYearId !== 'all' && assignment.academicYearId && assignment.academicYearId !== selectedYearId) return false;
+    // Filtre par date limite spécifique
+    if (selectedDate) {
+      const due = new Date(assignment.dueDate).toISOString().split('T')[0];
+      if (due !== selectedDate) return false;
+    }
 
     const hasSubmitted = assignment.submissions && assignment.submissions.length > 0;
     const isOverdue = isPast(new Date(assignment.dueDate));
@@ -302,7 +327,26 @@ export default function StudentHomeworkPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+              {/* Année scolaire */}
+              {academicYears.length > 0 && (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <label className="text-xs font-medium text-gray-700">Année scolaire</label>
+                  <select
+                    value={selectedYearId}
+                    onChange={(e) => setSelectedYearId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                  >
+                    <option value="all">Toutes les années</option>
+                    {academicYears.map((y: any) => (
+                      <option key={y.id} value={y.id}>
+                        {y.name}{(y.isCurrent || y.is_current) ? ' (actuelle)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Subject Filter */}
               <div className="space-y-1.5 sm:space-y-2">
                 <label className="text-xs font-medium text-gray-700">Matière</label>
@@ -331,6 +375,31 @@ export default function StudentHomeworkPage() {
                     <SelectItem value="upcoming">À venir</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Date limite spécifique */}
+              <div className="space-y-1.5 sm:space-y-2">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3" />
+                  Date limite
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                  />
+                  {selectedDate && (
+                    <button
+                      onClick={() => setSelectedDate('')}
+                      className="h-8 sm:h-9 px-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 text-xs"
+                      title="Réinitialiser la date"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Sort By */}
