@@ -16,3 +16,17 @@ export function formatCurrency(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
+
+/**
+ * Format a date string or Date object to a localized string
+ */
+export function formatDate(date: string | Date | null | undefined, options?: Intl.DateTimeFormatOptions): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('fr-FR', options ?? {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -12,7 +12,7 @@ import type { z } from 'zod';
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signIn, isLoading } = useAuthContext();
@@ -35,70 +35,42 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     setGlobalError(null);
-
-    console.log('[LOGIN] Tentative de connexion pour:', data.email);
-
     try {
       const result = await signIn(data.email, data.password);
 
-      console.log('[LOGIN] Résultat de signIn:', {
-        hasError: !!result.error,
-        errorMessage: result.error?.message,
-        hasUser: !!result.user,
-        userId: result.user?.id,
-        userEmail: result.user?.email,
-        userMetadata: result.user?.user_metadata,
-        userRole: result.user?.user_metadata?.role,
-      });
-
       if (result.error) {
-        console.error('[LOGIN] Erreur de connexion:', result.error);
         setGlobalError(result.error.message || 'Identifiants invalides');
         return;
       }
 
       if (result.user) {
-        // Try to get role from both user_metadata and app_metadata
         const userRole = (result.user.user_metadata?.role ||
                          result.user.app_metadata?.role ||
                          result.user.role) as string;
 
-        console.log('[LOGIN] Rôle détecté:', userRole);
-        console.log('[LOGIN] user_metadata:', result.user.user_metadata);
-        console.log('[LOGIN] app_metadata:', result.user.app_metadata);
-
         if (redirectTo) {
-          console.log('[LOGIN] Redirection vers:', redirectTo);
           router.push(redirectTo);
         } else if (userRole === 'super_admin') {
-          console.log('[LOGIN] Redirection vers /super-admin');
           router.push('/super-admin');
         } else if (userRole === 'school_admin') {
-          console.log('[LOGIN] Redirection vers /admin');
           router.push('/admin');
         } else if (userRole === 'accountant') {
-          console.log('[LOGIN] Redirection vers /accountant');
           router.push('/accountant');
         } else if (userRole === 'teacher') {
-          console.log('[LOGIN] Redirection vers /teacher');
           router.push('/teacher');
         } else if (userRole === 'student') {
-          console.log('[LOGIN] Redirection vers /student');
           router.push('/student');
         } else if (userRole === 'parent') {
-          console.log('[LOGIN] Redirection vers /parent');
           router.push('/parent');
         } else {
-          console.log('[LOGIN] Rôle non reconnu, redirection vers /admin par défaut');
           router.push('/admin');
         }
       } else {
-        console.error('[LOGIN] Aucun utilisateur retourné');
         setGlobalError('Aucun utilisateur trouvé');
       }
-    } catch (error: any) {
-      console.error('[LOGIN] Exception lors de la connexion:', error);
-      setGlobalError(error.message || 'Une erreur est survenue lors de la connexion');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Une erreur est survenue';
+      setGlobalError(msg);
     }
   };
 
@@ -121,9 +93,7 @@ export default function LoginPage() {
 
       <form className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-            Email
-          </label>
+          <label htmlFor="email" className="block text-sm font-medium text-slate-700">Email</label>
           <div className="mt-2">
             <Input
               id="email"
@@ -137,9 +107,7 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-            Mot de passe
-          </label>
+          <label htmlFor="password" className="block text-sm font-medium text-slate-700">Mot de passe</label>
           <div className="mt-2">
             <Input
               id="password"
@@ -179,5 +147,13 @@ export default function LoginPage() {
         </p>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="space-y-6 animate-pulse"><div className="h-8 bg-slate-200 rounded" /></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }
