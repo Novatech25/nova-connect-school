@@ -552,9 +552,11 @@ export default function AccountantPaymentsPage() {
     }
 
     // ── Bloc droite : titre rapport + date de génération + comptable ───
-    const accountantName = profile?.fullName || profile?.full_name ||
-      `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() ||
-      user?.email || 'Comptable';
+    const meta = (user as any)?.user_metadata || {};
+    const accountantName = [meta.first_name, meta.last_name].filter(Boolean).join(' ')
+      || profile?.fullName || profile?.full_name
+      || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim()
+      || user?.email || 'Comptable';
 
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
