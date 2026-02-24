@@ -8,7 +8,6 @@ import {
 } from '@novaconnect/data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -37,10 +36,12 @@ function ClassStudentsCount({ classId }: { classId: string }) {
 }
 
 export default function TeacherClassesPage() {
-    const { user, profile } = useAuthContext();
+    const { user } = useAuthContext();
     const teacherId = user?.id || '';
 
     // Filters state
+    const [yearFilter, setYearFilter] = useState<string>('all');
+    const [classFilter, setClassFilter] = useState<string>('all');
     const [levelFilter, setLevelFilter] = useState<string>('all');
     const [subjectFilter, setSubjectFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -49,22 +50,35 @@ export default function TeacherClassesPage() {
     // Get teacher assignments
     const { data: assignments, isLoading } = useTeacherAssignmentsByTeacher(teacherId);
 
+    // Extract unique academic years from assignments
+    const academicYears = useMemo(() => {
+        if (!assignments) return [];
+        const uniqueYears = new Map();
+        (assignments as any[]).forEach((a: any) => {
+            const year = a.academicYear || a.academic_year;
+            if (year && !uniqueYears.has(year.id)) {
+                uniqueYears.set(year.id, year);
+            }
+        });
+        return Array.from(uniqueYears.values());
+    }, [assignments]);
+
     // Extract unique classes from assignments
     const classes = useMemo(() => {
         if (!assignments) return [];
         const uniqueClasses = new Map();
         (assignments as any[]).forEach((a: any) => {
             if (a.class && !uniqueClasses.has(a.class.id)) {
-                // Collect all subjects for this class
                 const classSubjects = (assignments as any[])
                     .filter((as: any) => as.class?.id === a.class.id && as.subject)
                     .map((as: any) => as.subject);
-
+                const year = a.academicYear || a.academic_year;
                 uniqueClasses.set(a.class.id, {
                     ...a.class,
                     subjects: classSubjects,
                     level: a.class.level || null,
-                    academicYear: a.academicYear || a.academic_year || null
+                    academicYear: year || null,
+                    academicYearId: year?.id || null,
                 });
             }
         });
@@ -94,13 +108,25 @@ export default function TeacherClassesPage() {
         return Array.from(uniqueSubjects.values());
     }, [assignments]);
 
-    // Apply filters to classes
+    // Classes filtered by year (pour le filtre "par classe" dynamique)
+    const classesByYear = useMemo(() => {
+        if (yearFilter === 'all') return classes;
+        return classes.filter((cls: any) => cls.academicYearId === yearFilter);
+    }, [classes, yearFilter]);
+
+    // Apply all filters
     const filteredClasses = useMemo(() => {
         return classes.filter((cls: any) => {
+            // Year filter
+            if (yearFilter !== 'all' && cls.academicYearId !== yearFilter) return false;
+
+            // Class filter direct
+            if (classFilter !== 'all' && cls.id !== classFilter) return false;
+
             // Level filter
             if (levelFilter !== 'all' && cls.level?.id !== levelFilter) return false;
 
-            // Subject filter - check if class has this subject
+            // Subject filter
             if (subjectFilter !== 'all') {
                 const hasSubject = cls.subjects?.some((s: any) => s.id === subjectFilter);
                 if (!hasSubject) return false;
@@ -111,12 +137,13 @@ export default function TeacherClassesPage() {
                 const query = searchQuery.toLowerCase();
                 const className = (cls.name || '').toLowerCase();
                 const levelName = (cls.level?.name || '').toLowerCase();
-                if (!className.includes(query) && !levelName.includes(query)) return false;
+                const yearName = (cls.academicYear?.name || '').toLowerCase();
+                if (!className.includes(query) && !levelName.includes(query) && !yearName.includes(query)) return false;
             }
 
             return true;
         });
-    }, [classes, levelFilter, subjectFilter, searchQuery]);
+    }, [classes, yearFilter, classFilter, levelFilter, subjectFilter, searchQuery]);
 
     // Get enrollments for selected class
     const { data: selectedClassEnrollments, isLoading: isLoadingEnrollments } = useEnrollmentsByClass(
@@ -132,10 +159,12 @@ export default function TeacherClassesPage() {
     }), [classes, allSubjects, levels]);
 
     // Check if any filter is active
-    const hasActiveFilters = levelFilter !== 'all' || subjectFilter !== 'all' || searchQuery !== '';
+    const hasActiveFilters = yearFilter !== 'all' || classFilter !== 'all' || levelFilter !== 'all' || subjectFilter !== 'all' || searchQuery !== '';
 
     // Reset all filters
     const resetFilters = () => {
+        setYearFilter('all');
+        setClassFilter('all');
         setLevelFilter('all');
         setSubjectFilter('all');
         setSearchQuery('');
@@ -220,6 +249,11 @@ export default function TeacherClassesPage() {
                         <div className="flex items-center gap-2">
                             <Filter className="h-5 w-5 text-gray-500" />
                             <CardTitle className="text-base sm:text-lg">Filtres</CardTitle>
+                            {hasActiveFilters && (
+                                <Badge variant="secondary" className="text-xs">
+                                    {filteredClasses.length} résultat{filteredClasses.length !== 1 ? 's' : ''}
+                                </Badge>
+                            )}
                         </div>
                         {hasActiveFilters && (
                             <Button variant="ghost" size="sm" onClick={resetFilters} className="text-gray-500 hover:text-gray-700">
@@ -230,12 +264,36 @@ export default function TeacherClassesPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="p-4 sm:p-6 pt-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                        {/* Année scolaire Filter */}
+                        <SearchableSelect
+                            options={academicYears.map((year: any) => ({ value: year.id, label: year.name }))}
+                            value={yearFilter}
+                            onValueChange={(val) => {
+                                setYearFilter(val);
+                                // Reset class filter if year changes
+                                setClassFilter('all');
+                            }}
+                            placeholder="Année scolaire"
+                            searchPlaceholder="Rechercher une année..."
+                            allLabel="Toutes les années"
+                        />
+
+                        {/* Classe Filter (dynamique selon l'année) */}
+                        <SearchableSelect
+                            options={classesByYear.map((cls: any) => ({ value: cls.id, label: cls.name }))}
+                            value={classFilter}
+                            onValueChange={setClassFilter}
+                            placeholder="Classe"
+                            searchPlaceholder="Rechercher une classe..."
+                            allLabel="Toutes les classes"
+                        />
+
                         {/* Search */}
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                             <Input
-                                placeholder="Rechercher une classe..."
+                                placeholder="Rechercher..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-9"
@@ -276,6 +334,11 @@ export default function TeacherClassesPage() {
                             </CardTitle>
                             <CardDescription className="text-xs sm:text-sm">
                                 {filteredClasses.length} classe{filteredClasses.length !== 1 ? 's' : ''} trouvée{filteredClasses.length !== 1 ? 's' : ''}
+                                {yearFilter !== 'all' && (
+                                    <span className="ml-1 text-blue-600">
+                                        — {academicYears.find((y: any) => y.id === yearFilter)?.name}
+                                    </span>
+                                )}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="p-4 sm:p-6">
@@ -323,6 +386,12 @@ export default function TeacherClassesPage() {
                                                             {cls.level.name}
                                                         </Badge>
                                                     )}
+                                                    {cls.academicYear && (
+                                                        <Badge variant="outline" className="text-xs text-blue-600 border-blue-200">
+                                                            <Calendar className="h-3 w-3 mr-1" />
+                                                            {cls.academicYear.name}
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                                                     <span className="flex items-center gap-1">
@@ -368,7 +437,7 @@ export default function TeacherClassesPage() {
                             </CardTitle>
                             <CardDescription className="text-xs sm:text-sm">
                                 {selectedClass
-                                    ? `${selectedClass.level?.name || 'Niveau non défini'}`
+                                    ? `${selectedClass.level?.name || 'Niveau non défini'}${selectedClass.academicYear ? ` · ${selectedClass.academicYear.name}` : ''}`
                                     : 'Sélectionnez une classe pour voir les détails'
                                 }
                             </CardDescription>
