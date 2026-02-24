@@ -551,18 +551,27 @@ export default function AccountantPaymentsPage() {
       doc.text(contacts.join('   '), logoEndX, 28);
     }
 
-    // ── Bloc droite : titre rapport + date de génération ──────────────
+    // ── Bloc droite : titre rapport + date de génération + comptable ───
+    const accountantName = profile?.fullName || profile?.full_name ||
+      `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() ||
+      user?.email || 'Comptable';
+
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
-    doc.text('RAPPORT DES PAIEMENTS', pageWidth - MARGIN, 12, { align: 'right' });
+    doc.text('RAPPORT DES PAIEMENTS', pageWidth - MARGIN, 10, { align: 'right' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(200, 220, 255);
-    doc.text(`Genere le ${dateStr} a ${timeStr}`, pageWidth - MARGIN, 20, { align: 'right' });
-    doc.setFontSize(7.5);
+    doc.text(`Genere le ${dateStr} a ${timeStr}`, pageWidth - MARGIN, 18, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 200);
+    doc.text(`Comptable : ${accountantName}`, pageWidth - MARGIN, 26, { align: 'right' });
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(160, 185, 230);
-    doc.text('NovaConnect - Gestion Scolaire', pageWidth - MARGIN, 27, { align: 'right' });
+    doc.text('NovaConnect - Gestion Scolaire', pageWidth - MARGIN, 33, { align: 'right' });
 
     const bodyStartY = HEADER_H + 10;
 
