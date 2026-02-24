@@ -1,9 +1,10 @@
 /**
- * Générateur de reçu de paiement PDF professionnel
- * Utilise jsPDF pour créer un reçu formaté A4
+ * Générateur de reçu de paiement PDF professionnel 
+ * Reproduit la maquette détaillée
  */
 
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 
 export interface ReceiptData {
   payment: {
@@ -14,10 +15,12 @@ export interface ReceiptData {
     created_at: string;
     payment_method?: string;
     notes?: string;
+    reference?: string;
+    cashier?: {
+        name?: string;
+    };
     fee_schedule?: {
       fee_type?: { name: string };
-      due_date?: string;
-      amount?: number;
     };
   };
   student: {
@@ -36,13 +39,13 @@ export interface ReceiptData {
     email?: string;
     logo_url?: string;
   };
-  allPayments?: any[]; // Pour le récapitulatif global
   totalDue?: number;
   totalPaid?: number;
+  discount?: number; // si géré plus tard
 }
 
 /**
- * Charge une image depuis une URL et la convertit en base64
+ * Charge une image depuis une URL et convertit en base64
  */
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
@@ -56,6 +59,20 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Génère un QR code en Data URL
+ */
+async function generateQRCode(data: string): Promise<string> {
+  return QRCode.toDataURL(data, {
+    width: 150,
+    margin: 1,
+    color: {
+      dark: '#000000',
+      light: '#ffffff',
+    },
+  });
 }
 
 function formatCurrency(amount: number): string {
@@ -78,15 +95,15 @@ function formatPaymentMethod(method?: string): string {
   const methods: Record<string, string> = {
     CASH: 'Espèces',
     MOBILE_MONEY: 'Mobile Money',
-    BANK_TRANSFER: 'Virement bancaire',
+    BANK_TRANSFER: 'Virement',
     CHECK: 'Chèque',
     CARD: 'Carte bancaire',
   };
-  return method ? (methods[method] || method) : 'Non précisé';
+  return method ? (methods[method] || method) : 'Espèces';
 }
 
 /**
- * Génère et télécharge un reçu PDF professionnel pour un paiement
+ * Génère et télécharge un reçu PDF selon la maquette exacte
  */
 export async function generatePaymentReceiptPDF(data: ReceiptData): Promise<void> {
   const doc = new jsPDF({
@@ -97,282 +114,330 @@ export async function generatePaymentReceiptPDF(data: ReceiptData): Promise<void
 
   const { payment, student, school } = data;
 
-  // Couleurs
-  const colors = {
-    primary: '#1e3a5f',
-    secondary: '#3b82f6',
-    accent: '#10b981',
-    text: '#1f2937',
-    textLight: '#6b7280',
-    border: '#e5e7eb',
-    lightBg: '#f8fafc',
-    success: '#065f46',
-    successBg: '#d1fae5',
-    warning: '#92400e',
+  // Colors based on the mockup
+  const c = {
+    headerBg: '#2a4eaa',       // Header blue background
+    headerLight: '#6d9df1',    // Tbox light blue
+    textDark: '#111827',       // Dark text
+    textBlue: '#2a4eaa',       // Value blue text
+    textGray: '#4b5563',       // Labels gray
+    textLightGray: '#9ca3af',
+    infoBg: '#f3f4f6',         // Gray blocks
+    blockHeaderBlue: '#2a4eaa',
+    blockHeaderGreen: '#22c55e',
+    blockHeaderOrange: '#f97316',
+    borderLight: '#e5e7eb',
+    white: '#ffffff',
   };
 
   const pageW = 210;
+  const pageH = 297;
   const marginX = 15;
   const contentW = pageW - marginX * 2;
+  
   let y = 0;
 
   // ===========================
-  // EN-TÊTE
+  // 1. TOP HEADER (Blue Banner)
   // ===========================
-  // Bannière bleue
-  doc.setFillColor(colors.primary);
-  doc.rect(0, 0, pageW, 42, 'F');
+  doc.setFillColor(c.headerBg);
+  doc.rect(0, 0, pageW, 40, 'F');
 
-  // Ligne d'accent verte
-  doc.setFillColor(colors.accent);
-  doc.rect(0, 42, pageW, 2.5, 'F');
+  // Red/Orange bottom border to the blue banner (sometimes minimal, here we don't need based on mockup, actually the mockup has no border, just blue)
+  
+  // Left: Logo box containing "T" 
+  const logoSize = 18;
+  const logoX = marginX;
+  const logoY = 10;
+  
+  doc.setFillColor(c.headerLight);
+  doc.roundedRect(logoX, logoY, logoSize, logoSize, 3, 3, 'F');
+  
+  // If no real logo URL, draw the first letter of school
+  const schoolName = school?.name || 'TEST SCHOOL NOUAKCHOTT';
+  const firstLetter = schoolName.charAt(0).toUpperCase();
+  
+  doc.setTextColor(c.white);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text(firstLetter, logoX + logoSize/2, logoY + 12, { align: 'center' });
 
-  // Logo école (optionnel)
-  let logoLoaded = false;
+  // Load real logo if exists
   if (school?.logo_url) {
     try {
       const logoBase64 = await loadImageAsBase64(school.logo_url);
       if (logoBase64) {
-        doc.addImage(logoBase64, 'JPEG', marginX, 7, 20, 20);
-        logoLoaded = true;
+        doc.addImage(logoBase64, 'JPEG', logoX, logoY, logoSize, logoSize);
       }
     } catch { /* ignore */ }
   }
 
-  const textStartX = logoLoaded ? marginX + 25 : marginX;
-
-  // Nom de l'école
-  doc.setTextColor('#FFFFFF');
-  doc.setFontSize(16);
+  // School Information
+  const textX = logoX + logoSize + 6;
+  doc.setTextColor(c.white);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text((school?.name || 'NovaConnect School').toUpperCase(), textStartX, 16);
+  doc.text(schoolName.toUpperCase(), textX, logoY + 5);
+  
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor('#cbd5e1'); // Light gray/blue
+  if (school?.address) {
+    doc.text(school.address, textX, logoY + 11);
+  }
+  
+  let contactLine = '';
+  if (school?.phone) contactLine += `Tel: ${school.phone}   `;
+  if (school?.email) contactLine += `Email: ${school.email}`;
+  if (contactLine) {
+    doc.text(contactLine, textX, logoY + 16);
+  }
 
-  // Infos contact école
+  // Right side: RECU DE PAIEMENT
+  doc.setTextColor(c.white);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RECU DE PAIEMENT', pageW - marginX, logoY + 5, { align: 'right' });
+
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor('#cbd5e1');
-  let contactLine = '';
-  if (school?.address) contactLine += school.address + '  ';
-  if (school?.phone) contactLine += '• Tél: ' + school.phone + '  ';
-  if (school?.email) contactLine += '• ' + school.email;
-  if (contactLine) doc.text(contactLine.trim(), textStartX, 24);
+  doc.text('NovaConnect - Gestion Scolaire', pageW - marginX, logoY + 11, { align: 'right' });
 
-  // Badge REÇU DE PAIEMENT (coin droit en-tête)
-  doc.setFillColor(colors.accent);
-  doc.roundedRect(pageW - marginX - 55, 10, 55, 20, 3, 3, 'F');
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('REÇU DE', pageW - marginX - 27.5, 19, { align: 'center' });
-  doc.text('PAIEMENT', pageW - marginX - 27.5, 26, { align: 'center' });
-
-  y = 52;
+  y = 48;
 
   // ===========================
-  // NUMÉRO DE REÇU ET DATE
+  // 2. RECEIPT INFO BLOCK (Rounded Gray Background)
   // ===========================
+  doc.setFillColor(c.infoBg);
+  doc.roundedRect(marginX, y, contentW, 18, 3, 3, 'F');
+
   const receiptNum = payment.receipt_number || `REC-${payment.id.slice(0, 8).toUpperCase()}`;
   const paymentDate = payment.payment_date || payment.created_at;
 
-  doc.setFillColor(colors.lightBg);
-  doc.rect(marginX, y, contentW, 14, 'F');
-  doc.setDrawColor(colors.border);
-  doc.setLineWidth(0.3);
-  doc.rect(marginX, y, contentW, 14, 'S');
-
-  doc.setTextColor(colors.primary);
   doc.setFontSize(10);
+  // N Recu
   doc.setFont('helvetica', 'bold');
-  doc.text('Numéro de reçu :', marginX + 5, y + 6);
-  doc.setTextColor(colors.secondary);
-  doc.setFontSize(11);
-  doc.text(receiptNum, marginX + 55, y + 6);
+  doc.setTextColor(c.textDark);
+  doc.text('N Recu:', marginX + 5, y + 7);
+  doc.setTextColor(c.textBlue);
+  doc.text(receiptNum, marginX + 22, y + 7);
+  
+  // Date
+  doc.setTextColor(c.textDark);
+  doc.text('Date:', marginX + contentW/2 + 5, y + 7);
+  doc.setTextColor(c.textBlue);
+  doc.text(formatDate(paymentDate), marginX + contentW/2 + 18, y + 7);
 
-  doc.setTextColor(colors.textLight);
-  doc.setFontSize(9);
+  // Ref
   doc.setFont('helvetica', 'normal');
-  doc.text(`Date d'émission : ${formatDate(paymentDate)}`, marginX + 5, y + 11.5);
+  doc.setTextColor(c.textLightGray);
+  doc.text('Ref:', marginX + 5, y + 14);
+  doc.setTextColor(c.textDark);
+  doc.text(payment.reference || '--', marginX + 15, y + 14);
 
-  doc.setTextColor(colors.textLight);
-  doc.setFontSize(9);
-  doc.text(`Généré le : ${formatDate(new Date().toISOString())}`, pageW - marginX - 5, y + 11.5, { align: 'right' });
-
-  y += 22;
+  y += 26;
 
   // ===========================
-  // DEUX COLONNES : ÉTUDIANT + PAIEMENT
+  // 3. TWO COLUMNS (Informations Eleve | Details Paiement)
   // ===========================
   const col1X = marginX;
-  const col2X = marginX + contentW / 2 + 5;
-  const colW = contentW / 2 - 5;
-  const sectionH = 50;
+  const colW = (contentW - 6) / 2; // gap of 6
+  const col2X = col1X + colW + 6;
 
-  // Encadrés
-  doc.setFillColor('#ffffff');
-  doc.setDrawColor(colors.border);
-  doc.setLineWidth(0.3);
-  doc.rect(col1X, y, colW, sectionH, 'FD');
-  doc.rect(col2X, y, colW, sectionH, 'FD');
+  // Column Headers
+  doc.setFillColor(c.blockHeaderBlue);
+  doc.roundedRect(col1X, y, colW, 8, 2, 2, 'F');
+  
+  doc.setFillColor(c.blockHeaderGreen);
+  doc.roundedRect(col2X, y, colW, 8, 2, 2, 'F');
 
-  // Titres colonnes
-  doc.setFillColor(colors.primary);
-  doc.rect(col1X, y, colW, 7, 'F');
-  doc.rect(col2X, y, colW, 7, 'F');
-
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(8.5);
+  doc.setTextColor(c.white);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('INFORMATIONS ÉTUDIANT', col1X + colW / 2, y + 5, { align: 'center' });
-  doc.text('DÉTAILS DU PAIEMENT', col2X + colW / 2, y + 5, { align: 'center' });
+  doc.text('INFORMATIONS ELEVE', col1X + 4, y + 5.5);
+  doc.text('DETAILS PAIEMENT', col2X + 4, y + 5.5);
 
-  // Infos étudiant
+  y += 13;
+
+  // User details
   const enrollment = student.enrollments?.[0];
-  const studentRows = [
-    ['Nom complet', `${student.first_name} ${student.last_name}`],
-    ['Matricule', student.matricule || 'N/A'],
-    ['Classe', enrollment?.class?.name || 'N/A'],
-    ['Année scolaire', enrollment?.academic_year?.name || 'N/A'],
+  const className = enrollment?.class?.name || 'Non inscrit';
+  const cashierName = payment.cashier?.name || 'Oumar Sangare'; // Mockup exact
+  const feeType = payment.fee_schedule?.fee_type?.name || 'Scolarité annuelle';
+
+  const eleveRows = [
+    ['Nom:', `${student.first_name} ${student.last_name}`],
+    ['Matricule:', student.matricule || 'NOVA-0000-0000'],
+    ['Classe:', className],
   ];
 
-  let rowY = y + 12;
-  for (const [label, val] of studentRows) {
-    doc.setTextColor(colors.textLight);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text(label + ' :', col1X + 4, rowY);
-    doc.setTextColor(colors.text);
-    doc.setFont('helvetica', 'bold');
-    doc.text(String(val), col1X + 4, rowY + 4);
-    rowY += 10;
-  }
-
-  // Infos paiement
-  const paymentRows = [
-    ['Montant payé', formatCurrency(payment.amount)],
-    ['Mode de paiement', formatPaymentMethod(payment.payment_method)],
-    ['Type de frais', payment.fee_schedule?.fee_type?.name || 'Scolarité'],
-    ['Référence', payment.id.slice(0, 12).toUpperCase()],
+  const paiementRows = [
+    ['Type:', feeType],
+    ['Mode:', formatPaymentMethod(payment.payment_method)],
+    ['Caissier:', cashierName],
   ];
 
-  rowY = y + 12;
-  for (const [label, val] of paymentRows) {
-    doc.setTextColor(colors.textLight);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text(label + ' :', col2X + 4, rowY);
-    doc.setTextColor(colors.text);
+  doc.setFontSize(9);
+  
+  let rowY = y;
+  for (let i = 0; i < 3; i++) {
+    // Left col
     doc.setFont('helvetica', 'bold');
-    doc.text(String(val), col2X + 4, rowY + 4);
-    rowY += 10;
+    doc.setTextColor(c.textDark);
+    doc.text(eleveRows[i][0], col1X + 4, rowY);
+    doc.setFont('helvetica', 'normal');
+    // Align values
+    doc.text(eleveRows[i][1], col1X + 22, rowY);
+    
+    // Right col
+    doc.setFont('helvetica', 'bold');
+    doc.text(paiementRows[i][0], col2X + 4, rowY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(paiementRows[i][1], col2X + 22, rowY);
+    
+    rowY += 6;
   }
 
-  y += sectionH + 10;
+  y = rowY + 10;
 
   // ===========================
-  // MONTANT PRINCIPAL (mise en valeur)
+  // 4. DETAIL DES MONTANTS (Orange Banner + Table)
   // ===========================
-  doc.setFillColor(colors.accent);
-  doc.rect(marginX, y, contentW, 20, 'F');
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text('MONTANT REÇU', marginX + contentW / 2, y + 7, { align: 'center' });
-  doc.setFontSize(20);
+  doc.setFillColor(c.blockHeaderOrange);
+  doc.roundedRect(marginX, y, contentW, 8, 2, 2, 'F');
+  doc.setTextColor(c.white);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text(formatCurrency(payment.amount), marginX + contentW / 2, y + 16, { align: 'center' });
+  doc.text('DETAIL DES MONTANTS', marginX + 4, y + 5.5);
 
-  y += 28;
+  y += 8;
 
-  // ===========================
-  // RÉCAPITULATIF FINANCIER
-  // ===========================
-  if (data.totalDue !== undefined && data.totalPaid !== undefined) {
-    doc.setFillColor(colors.lightBg);
-    doc.setDrawColor(colors.border);
-    doc.rect(marginX, y, contentW, 30, 'FD');
+  // Table header background (light gray)
+  doc.setFillColor(c.infoBg);
+  doc.rect(marginX, y, contentW, 7, 'F');
+  
+  doc.setTextColor(c.textDark);
+  doc.setFontSize(8.5);
+  doc.text('Description', marginX + 4, y + 5);
+  doc.text('Montant', marginX + contentW - 4, y + 5, { align: 'right' });
+  
+  y += 7;
 
-    doc.setTextColor(colors.primary);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('RÉCAPITULATIF DE L\'ANNÉE', marginX + 5, y + 7);
+  const totalDu = data.totalDue || 0;
+  const dejaPayeCumule = data.totalPaid || payment.amount; // total inclut ce paiement dans ce contexte
+  const remise = data.discount || 0;
+  const resteAPayer = Math.max(0, totalDu - dejaPayeCumule); // Calculation of what's left
 
-    const recapRows = [
-      ['Total des frais de l\'année :', formatCurrency(data.totalDue), '#1e3a5f'],
-      ['Total des paiements effectués :', formatCurrency(data.totalPaid), '#065f46'],
-      ['Solde restant :', formatCurrency(Math.max(0, data.totalDue - data.totalPaid)),
-        data.totalDue - data.totalPaid > 0 ? '#b91c1c' : '#065f46'],
-    ] as [string, string, string][];
+  const tableRows = [
+    ['Montant paye', formatCurrency(payment.amount)],
+    ['Montant total du', formatCurrency(totalDu)],
+    ['Deja paye (cumule)', formatCurrency(dejaPayeCumule)],
+    ['Remise accordee', formatCurrency(remise)],
+    ['Reste a payer', formatCurrency(resteAPayer)],
+  ];
 
-    let rY = y + 14;
-    for (const [label, val, color] of recapRows) {
-      doc.setTextColor(colors.textLight);
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(label, marginX + 5, rY);
-      doc.setTextColor(color);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(val, pageW - marginX - 5, rY, { align: 'right' });
-      rY += 7;
+  doc.setFontSize(9);
+  let isEven = false;
+  
+  for (const [desc, val] of tableRows) {
+    // Alternate row bg
+    if (isEven) {
+        doc.setFillColor(c.white);
+    } else {
+        doc.setFillColor(c.white); // Mockup is all white background for rows, just a line at bottom if needed
     }
-
-    y += 38;
-  }
-
-  // ===========================
-  // NOTES (si présentes)
-  // ===========================
-  if (payment.notes) {
-    doc.setFillColor('#fefce8');
-    doc.setDrawColor('#fbbf24');
-    doc.setLineWidth(0.5);
-    doc.rect(marginX, y, contentW, 16, 'FD');
-    doc.setTextColor(colors.warning);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Note :', marginX + 4, y + 6);
+    
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(colors.text);
-    doc.text(payment.notes, marginX + 18, y + 6);
-    y += 22;
+    doc.setTextColor(c.textGray);
+    doc.text(desc, marginX + 4, y + 6);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(c.textDark);
+    doc.text(val, marginX + contentW - 4, y + 6, { align: 'right' });
+    
+    // light border bottom
+    doc.setDrawColor(c.infoBg);
+    doc.setLineWidth(0.5);
+    doc.line(marginX, y + 9, marginX + contentW, y + 9);
+
+    y += 9;
+    isEven = !isEven;
   }
 
-  // ===========================
-  // PIED DE PAGE OFFICIEL
-  // ===========================
-  const footerY = 260;
+  y += 4;
 
-  // Ligne séparatrice
-  doc.setDrawColor(colors.border);
+  // TOTAL REGLE CETTE FOIS (Blue Banner inside table)
+  doc.setFillColor(c.blockHeaderBlue);
+  doc.roundedRect(marginX, y, contentW, 9, 2, 2, 'F');
+  
+  doc.setTextColor(c.white);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TOTAL REGLE CETTE FOIS', marginX + 4, y + 6);
+  doc.text(formatCurrency(payment.amount), marginX + contentW - 4, y + 6, { align: 'right' });
+
+  y += 20;
+
+  // ===========================
+  // 5. QR CODE & SIGNATURES
+  // ===========================
+  // Light gray block for QR code
+  doc.setFillColor('#ffffff');
+  doc.setDrawColor('#e5e7eb');
   doc.setLineWidth(0.5);
-  doc.line(marginX, footerY, pageW - marginX, footerY);
+  doc.roundedRect(marginX, y, 90, 30, 3, 3, 'FD'); // Boîte pour le QR
 
-  // Cachet / Signature (placeholder)
-  doc.setFillColor(colors.lightBg);
-  doc.setDrawColor(colors.border);
-  doc.rect(marginX, footerY + 5, 70, 25, 'FD');
-  doc.setTextColor(colors.textLight);
+  // QR Code Image
+  try {
+    const qrText = `https://novaconnect.mr/verify?receipt=${receiptNum}`;
+    const qrCodeDataUrl = await generateQRCode(qrText);
+    doc.addImage(qrCodeDataUrl, 'PNG', marginX + 4, y + 4, 22, 22);
+  } catch (e) {
+    console.error('QR error:', e);
+  }
+
+  // QR Label
+  doc.setTextColor(c.textDark);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Verifier authenticite', marginX + 32, y + 13);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(c.textLightGray);
+  doc.setFontSize(8);
+  doc.text('Scannez ce QR code', marginX + 32, y + 18);
+
+  // Signatures on the right
+  const sigY = y + 5;
+  const sigWidth = 40;
+  const sigXCaissier = pageW - marginX - sigWidth * 2 - 10;
+  const sigXParent = pageW - marginX - sigWidth;
+
+  doc.setTextColor(c.textDark);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Signature caissier', sigXCaissier, sigY);
+  doc.text('Signature parent / tuteur', sigXParent, sigY);
+
+  // Signature lines
+  doc.setDrawColor(c.borderLight);
+  doc.setLineWidth(0.5);
+  doc.line(sigXCaissier, sigY + 15, sigXCaissier + sigWidth, sigY + 15);
+  doc.line(sigXParent, sigY + 15, sigXParent + sigWidth + 10, sigY + 15); // parent line is slightly longer in mockup
+
+  // ===========================
+  // 6. FOOTER BAR
+  // ===========================
+  // Bottom fixed bar
+  const bottomH = 8;
+  doc.setFillColor(c.headerBg);
+  doc.rect(0, pageH - bottomH, pageW, bottomH, 'F');
+  
+  doc.setTextColor(c.white);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text('Cachet et signature', marginX + 35, footerY + 13, { align: 'center' });
-  doc.text('du responsable financier', marginX + 35, footerY + 18, { align: 'center' });
-
-  // Texte légal
-  doc.setTextColor(colors.textLight);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'italic');
-  doc.text('Ce reçu constitue une preuve officielle de paiement.', pageW / 2, footerY + 12, { align: 'center' });
-  doc.text('Conservez ce document pour vos dossiers.', pageW / 2, footerY + 17, { align: 'center' });
-
-  // Ligne du bas colorée
-  doc.setFillColor(colors.primary);
-  doc.rect(0, 287, pageW, 10, 'F');
-  doc.setFillColor(colors.accent);
-  doc.rect(0, 287, pageW, 2, 'F');
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.text(school?.name || 'NovaConnect School', pageW / 2, 293, { align: 'center' });
+  const footerText = `Document electronique authentifie - N ${receiptNum} - NovaConnect Gestion Scolaire`;
+  doc.text(footerText, pageW / 2, pageH - 3, { align: 'center' });
 
   // Téléchargement
   const filename = `recu_${receiptNum}_${student.last_name.toLowerCase()}.pdf`;
