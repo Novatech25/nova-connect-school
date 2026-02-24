@@ -25,10 +25,8 @@ import {
 } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useToast } from '@/hooks/use-toast';
-import {
-  useAuthContext,
-  usePlannedSessions,
-} from '@novaconnect/data';
+import { useAuthContext, usePlannedSessions } from '@novaconnect/data';
+import { getStudentProfileSecure, getAcademicYearsSecure } from '@/actions/payment-actions';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -78,6 +76,25 @@ export default function StudentSchedulePage() {
   // Filters
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedTeacher, setSelectedTeacher] = useState<string>('all');
+
+  // Academic Year filter
+  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [selectedYearId, setSelectedYearId] = useState<string>('all');
+
+  useEffect(() => {
+    async function loadYears() {
+      if (!user?.id) return;
+      const { data: studentData } = await getStudentProfileSecure(user.id);
+      if (!studentData?.school_id) return;
+      const { data: years } = await getAcademicYearsSecure(studentData.school_id);
+      if (years && years.length > 0) {
+        setAcademicYears(years);
+        const current = years.find((y: any) => y.isCurrent || y.is_current || y.current);
+        if (current) setSelectedYearId(current.id);
+      }
+    }
+    loadYears();
+  }, [user?.id]);
 
   // Filter schedule entries
   const filteredEntries = scheduleEntries.filter((entry: any) => {
@@ -331,9 +348,24 @@ export default function StudentSchedulePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Sélecteur de date directe */}
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-gray-400 hidden sm:block" />
+                <input
+                  type="date"
+                  value={format(currentDate, 'yyyy-MM-dd')}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setCurrentDate(new Date(e.target.value + 'T12:00:00'));
+                      setViewMode('day');
+                    }
+                  }}
+                  className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs sm:text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                />
+              </div>
               <Select value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
-                <SelectTrigger className="w-[120px] h-8 sm:h-9 text-xs sm:text-sm">
+                <SelectTrigger className="w-[100px] sm:w-[120px] h-8 sm:h-9 text-xs sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -347,6 +379,27 @@ export default function StudentSchedulePage() {
           {/* Filters */}
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6 border-t">
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Année scolaire */}
+              {academicYears.length > 0 && (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                    <Filter className="h-3 w-3" />
+                    Année scolaire
+                  </label>
+                  <select
+                    value={selectedYearId}
+                    onChange={(e) => setSelectedYearId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="all">Toutes les années</option>
+                    {academicYears.map((y: any) => (
+                      <option key={y.id} value={y.id}>
+                        {y.name}{(y.isCurrent || y.is_current) ? ' (actuelle)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {/* Subject Filter */}
               <div className="space-y-1.5 sm:space-y-2">
                 <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
