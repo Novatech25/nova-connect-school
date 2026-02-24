@@ -72,6 +72,7 @@ export default function StudentPaymentsPage() {
     const [selectedType, setSelectedType] = useState<string>("all");
     const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>("all");
     const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
+    const [selectedDate, setSelectedDate] = useState<string>(''); // filtre par date spécifique
 
     // --- 1. Fetch Student Profile ---
     const fetchStudentProfile = async () => {
@@ -193,10 +194,16 @@ export default function StudentPaymentsPage() {
     // This ensures "Total Due" and "Total Paid" reflect the selected year
     const activeFeeSchedules = feeSchedules.filter(f => selectedAcademicYear === "all" || f.academic_year_id === selectedAcademicYear);
     const activePayments = payments.filter(p => {
-        if (selectedAcademicYear === "all") return true;
-        // Check direct property or nested property from linked fee schedule
-        const paymentYearId = p.academic_year_id || p.fee_schedule?.academic_year_id;
-        return paymentYearId === selectedAcademicYear;
+        if (selectedAcademicYear !== "all") {
+            const paymentYearId = p.academic_year_id || p.fee_schedule?.academic_year_id;
+            if (paymentYearId !== selectedAcademicYear) return false;
+        }
+        // Filtre par date spécifique (payment_date ou created_at)
+        if (selectedDate) {
+            const payDate = (p.payment_date || p.created_at || '').split('T')[0];
+            if (payDate !== selectedDate) return false;
+        }
+        return true;
     });
 
     // Use 'amount' for the total fee amount (as per schema)
@@ -235,6 +242,11 @@ export default function StudentPaymentsPage() {
             if (selectedStatus === "overdue" && !isOverdue) return false;
         }
         if (selectedType !== "all" && fee.fee_type?.id !== selectedType) return false;
+        // Filtre par date d'échéance spécifique
+        if (selectedDate) {
+            const dueDate = (fee.due_date || '').split('T')[0];
+            if (dueDate !== selectedDate) return false;
+        }
         return true;
     });
 
@@ -388,7 +400,7 @@ export default function StudentPaymentsPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-                        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                             <div className="space-y-1.5 sm:space-y-2">
                                 <label className="text-xs font-medium text-gray-700">Statut</label>
                                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -425,6 +437,30 @@ export default function StudentPaymentsPage() {
                                     searchPlaceholder="Rechercher une année..."
                                     allLabel="Toutes les années"
                                 />
+                            </div>
+                            {/* Date spécifique */}
+                            <div className="space-y-1.5 sm:space-y-2">
+                                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                                    <Calendar className="h-3 w-3" />
+                                    Date spécifique
+                                </label>
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="date"
+                                        value={selectedDate}
+                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                        className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                                    />
+                                    {selectedDate && (
+                                        <button
+                                            onClick={() => setSelectedDate('')}
+                                            className="h-8 sm:h-9 px-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 text-xs"
+                                            title="Réinitialiser"
+                                        >
+                                            ×
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </CardContent>
