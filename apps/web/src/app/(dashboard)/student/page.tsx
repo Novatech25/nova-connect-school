@@ -26,11 +26,11 @@ import {
   useReportCards,
   usePlannedSessions,
   useAttendanceByStudent,
-  useFeeSchedules,
   useNotifications,
   useAssignments,
   useSchool,
 } from '@novaconnect/data';
+import { getStudentProfileSecure, getStudentFeeSchedulesSecure } from '@/actions/payment-actions';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -77,12 +77,20 @@ export default function StudentDashboard() {
     endDate: lastDayOfMonth,
   });
 
-  // Fetch fee schedules de l'élève pour calculer le statut de paiement
-  const { data: studentFeeSchedules = [] } = useFeeSchedules(
-    studentId
-      ? { schoolId: schoolId || '', studentId }
-      : { schoolId: '' } // désactivé si pas de studentId
-  );
+  // Fetch fee schedules via Server Action (même méthode que student/payments)
+  const [studentFeeSchedules, setStudentFeeSchedules] = useState<any[]>([]);
+  useEffect(() => {
+    async function loadFees() {
+      if (!user?.id) return;
+      // 1. Récupérer le profil étudiant lié à cet utilisateur
+      const { data: studentData } = await getStudentProfileSecure(user.id);
+      if (!studentData?.id) return;
+      // 2. Récupérer les fee schedules de cet étudiant
+      const { data } = await getStudentFeeSchedulesSecure(studentData.id, undefined);
+      if (data) setStudentFeeSchedules(data);
+    }
+    loadFees();
+  }, [user?.id]);
 
   // Fetch notifications
   const { data: notifications = [] } = useNotifications(user?.id || '', {
@@ -122,13 +130,14 @@ export default function StudentDashboard() {
   // Get today's classes (sessions du jour)
   const todayClasses = (scheduleEntries as any[]) || [];
 
-  // Get payment status — même logique que accountant/payments
+  // Get payment status — même logique que student/payments (champs snake_case Supabase)
   const getPaymentStatus = () => {
     const schedules = studentFeeSchedules as any[];
     if (!schedules || schedules.length === 0) return { status: 'unknown', label: 'Non renseigné', color: 'gray' };
     const total = schedules.reduce((s: number, x: any) => s + (x.amount || 0), 0);
-    const paid = schedules.reduce((s: number, x: any) => s + (x.paidAmount || 0), 0);
-    const remaining = schedules.reduce((s: number, x: any) => s + (x.remainingAmount || 0), 0);
+    // Server Action retourne des données Supabase brutes (snake_case)
+    const paid = schedules.reduce((s: number, x: any) => s + (x.paid_amount || x.paidAmount || 0), 0);
+    const remaining = Math.max(0, total - paid);
     if (total <= 0) return { status: 'unknown', label: 'Aucun frais', color: 'gray' };
     if (remaining <= 0) return { status: 'ok', label: 'À jour', color: 'green' };
     if (paid > 0) return { status: 'warning', label: 'Partiel', color: 'yellow' };
