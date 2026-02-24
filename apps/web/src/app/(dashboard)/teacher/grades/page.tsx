@@ -1,23 +1,26 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useAuthContext, useTeacherGrades, useTeacherAssignmentsByTeacher } from '@novaconnect/data';
+import { useAuthContext, useTeacherGrades, useTeacherAssignmentsByTeacher, useAcademicYears, usePeriods } from '@novaconnect/data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Users, FileEdit, Clock, CheckCircle, Send, Search, Filter, X } from 'lucide-react';
+import { PlusCircle, Users, FileEdit, Clock, CheckCircle, Send, Search, Filter, X, Calendar, BookOpen } from 'lucide-react';
 import Link from 'next/link';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function TeacherGradesPage() {
-    const { user } = useAuthContext();
+    const { user, profile } = useAuthContext();
+    const schoolId = profile?.schoolId || user?.schoolId || (user as any)?.school_id;
 
     // Filters state
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [yearFilter, setYearFilter] = useState<string>('all');
+    const [periodFilter, setPeriodFilter] = useState<string>('all');
     const [classFilter, setClassFilter] = useState<string>('all');
     const [subjectFilter, setSubjectFilter] = useState<string>('all');
     const [levelFilter, setLevelFilter] = useState<string>('all');
@@ -28,6 +31,16 @@ export default function TeacherGradesPage() {
 
     // Récupérer les assignments pour avoir les classes et matières
     const { data: assignments } = useTeacherAssignmentsByTeacher(user?.id || '');
+
+    // Années scolaires et périodes
+    const { data: academicYears = [] } = useAcademicYears(schoolId || '');
+    const selectedYearId = yearFilter !== 'all' ? yearFilter : (academicYears as any[]).find((y: any) => y.isCurrent)?.id || (academicYears as any[])[0]?.id;
+    const { data: periods = [] } = usePeriods(schoolId || '', selectedYearId || '');
+    // Périodes filtrées selon l'année sélectionnée
+    const periodsForYear = useMemo(() => {
+        if (yearFilter === 'all') return periods as any[];
+        return (periods as any[]).filter((p: any) => p.academicYearId === yearFilter);
+    }, [periods, yearFilter]);
 
     // Extract unique classes from assignments
     const classes = useMemo(() => {
@@ -87,6 +100,15 @@ export default function TeacherGradesPage() {
             // Status filter
             if (statusFilter !== 'all' && grade.status !== statusFilter) return false;
 
+            // Year filter (via periods)
+            if (yearFilter !== 'all') {
+                const period = (periods as any[]).find((p: any) => p.id === (grade as any).periodId);
+                if (!period || period.academicYearId !== yearFilter) return false;
+            }
+
+            // Period filter
+            if (periodFilter !== 'all' && (grade as any).periodId !== periodFilter) return false;
+
             // Level filter
             if (levelFilter !== 'all') {
                 const gradeClass = classes.find((c: any) => c.id === grade.classId);
@@ -109,14 +131,16 @@ export default function TeacherGradesPage() {
 
             return true;
         }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [grades, statusFilter, classFilter, subjectFilter, levelFilter, searchQuery, classes]);
+    }, [grades, statusFilter, yearFilter, periodFilter, classFilter, subjectFilter, levelFilter, searchQuery, classes, periods]);
 
     // Check if any filter is active
-    const hasActiveFilters = statusFilter !== 'all' || classFilter !== 'all' || subjectFilter !== 'all' || levelFilter !== 'all' || searchQuery !== '';
+    const hasActiveFilters = statusFilter !== 'all' || yearFilter !== 'all' || periodFilter !== 'all' || classFilter !== 'all' || subjectFilter !== 'all' || levelFilter !== 'all' || searchQuery !== '';
 
     // Reset all filters
     const resetFilters = () => {
         setStatusFilter('all');
+        setYearFilter('all');
+        setPeriodFilter('all');
         setClassFilter('all');
         setSubjectFilter('all');
         setLevelFilter('all');
@@ -269,7 +293,7 @@ export default function TeacherGradesPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="p-4 sm:p-6 pt-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                         {/* Search */}
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -293,6 +317,26 @@ export default function TeacherGradesPage() {
                                 <SelectItem value="published">Publiée</SelectItem>
                             </SelectContent>
                         </Select>
+
+                        {/* Year Filter */}
+                        <SearchableSelect
+                            options={(academicYears as any[]).map((y: any) => ({ value: y.id, label: y.name }))}
+                            value={yearFilter}
+                            onValueChange={(v) => { setYearFilter(v); setPeriodFilter('all'); }}
+                            placeholder="Année scolaire"
+                            searchPlaceholder="Rechercher une année..."
+                            allLabel="Toutes les années"
+                        />
+
+                        {/* Period Filter — dynamique selon l'année */}
+                        <SearchableSelect
+                            options={periodsForYear.map((p: any) => ({ value: p.id, label: `${p.name}${p.periodType ? ` (${p.periodType})` : ''}` }))}
+                            value={periodFilter}
+                            onValueChange={setPeriodFilter}
+                            placeholder="Période"
+                            searchPlaceholder="Rechercher une période..."
+                            allLabel="Toutes les périodes"
+                        />
 
                         {/* Level Filter */}
                         <SearchableSelect
