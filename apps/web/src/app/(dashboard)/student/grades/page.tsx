@@ -44,6 +44,7 @@ export default function StudentGradesPage() {
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('all');
   const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(''); // filtre par date spécifique
   const [sortBy, setSortBy] = useState<'date' | 'subject' | 'score'>('date');
 
   const [student, setStudent] = useState<any>(null);
@@ -110,6 +111,11 @@ export default function StudentGradesPage() {
     if (selectedAcademicYear !== 'all' && grade.academicYearId !== selectedAcademicYear) return false;
     if (selectedPeriod !== 'all' && grade.period?.id !== selectedPeriod) return false;
     if (selectedSubject !== 'all' && grade.subject?.id !== selectedSubject) return false;
+    // Filtre par date spécifique (createdAt)
+    if (selectedDate) {
+      const gradeDate = new Date(grade.createdAt).toISOString().split('T')[0];
+      if (gradeDate !== selectedDate) return false;
+    }
     return true;
   });
 
@@ -365,7 +371,7 @@ export default function StudentGradesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
               {/* Academic Year Filter */}
               <div className="space-y-1.5 sm:space-y-2">
                 <label className="text-xs font-medium text-gray-700">Année scolaire</label>
@@ -403,6 +409,31 @@ export default function StudentGradesPage() {
                   searchPlaceholder="Rechercher une matière..."
                   allLabel="Toutes les matières"
                 />
+              </div>
+
+              {/* Date Filter */}
+              <div className="space-y-1.5 sm:space-y-2">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3" />
+                  Date spécifique
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs sm:text-sm text-gray-700 focus:border-blue-500 focus:outline-none h-8 sm:h-9"
+                  />
+                  {selectedDate && (
+                    <button
+                      onClick={() => setSelectedDate('')}
+                      className="h-8 sm:h-9 px-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 text-xs"
+                      title="Réinitialiser la date"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Sort By */}
