@@ -1,8 +1,8 @@
 {
-  "buildCommand": "pnpm build:web",
+  "buildCommand": "cd apps/web && pnpm build",
   "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "pnpm install",
+  "installCommand": "pnpm install --frozen-lockfile",
   "regions": ["cdg1"],
 
   "headers": [
