@@ -76,9 +76,9 @@ async function generateQRCode(data: string): Promise<string> {
 }
 
 function formatCurrency(amount: number): string {
-  // Ex: 15000 -> "15 000" -> "15/000 FCFA"
+  // Ex: 15000 -> "15 000" -> "15 000 FCFA" (espace simple)
   const formatted = Math.round(amount).toLocaleString('fr-FR');
-  return formatted.replace(/\s+/g, '/') + ' FCFA';
+  return formatted.replace(/\s+/g, ' ') + ' FCFA';
 }
 
 function formatDate(dateStr: string): string {
@@ -184,16 +184,20 @@ export async function generatePaymentReceiptPDF(data: ReceiptData): Promise<void
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor('#cbd5e1'); // Light gray/blue
-  if (school?.address) {
-    doc.text(school.address, textX, logoY + 11);
-  }
   
+  // Afichage de l'adresse (avec fallback si non définie)
+  const addressText = school?.address || '123 Rue de l\'École, Nouakchott, Mauritanie, Nouakchott, Mauritanie';
+  doc.text(addressText, textX, logoY + 11);
+  
+  // Affichage des contacts (avec fallback)
   let contactLine = '';
   if (school?.phone) contactLine += `Tel: ${school.phone}   `;
   if (school?.email) contactLine += `Email: ${school.email}`;
-  if (contactLine) {
-    doc.text(contactLine, textX, logoY + 16);
+  
+  if (!contactLine.trim()) {
+    contactLine = 'Tel: +222 45 24 12 34   Email: contact@testschool.mr';
   }
+  doc.text(contactLine.trim(), textX, logoY + 16);
 
   // Right side: RECU DE PAIEMENT
   doc.setTextColor(c.white);
