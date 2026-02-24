@@ -25,8 +25,9 @@ import {
   useGrades,
   useReportCards,
   useSchedule,
-  useAttendance,
-  usePayments,
+  useAttendanceByStudent,
+  useStudentFeeSchedules,
+  useStudentPayments,
   useNotifications,
   useAssignments,
   useSchool,
@@ -67,15 +68,18 @@ export default function StudentDashboard() {
     endDate: currentDate.toISOString().split('T')[0],
   });
 
-  // Fetch attendance
-  const { data: attendanceRecords = [] } = useAttendance(schoolId || '', {
-    studentId,
+  // Fetch attendance (absences de l'élève ce mois-ci)
+  const now = new Date();
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const { data: attendanceRecords = [] } = useAttendanceByStudent(schoolId || '', {
+    startDate: firstDayOfMonth,
+    endDate: lastDayOfMonth,
   });
 
-  // Fetch payments
-  const { data: payments = [] } = usePayments(schoolId || '', {
-    studentId,
-  });
+  // Fetch fee schedules (statut paiement) et paiements de l'élève
+  const { data: studentFeeSchedules = [] } = useStudentFeeSchedules(studentId || '', '');
+  const { data: studentPayments = [] } = useStudentPayments(studentId || '');
 
   // Fetch notifications
   const { data: notifications = [] } = useNotifications(user?.id || '', {
@@ -105,28 +109,24 @@ export default function StudentDashboard() {
     !a.submissions || a.submissions.length === 0
   ).length || 0;
 
-  // Get this month's absences
-  const thisMonthAbsences = attendanceRecords?.filter((a: any) => {
-    const recordDate = new Date(a.date);
-    const now = new Date();
-    return (
-      recordDate.getMonth() === now.getMonth() &&
-      recordDate.getFullYear() === now.getFullYear() &&
-      a.status === 'absent'
-    );
+  // Get this month's absences — les records filtrés par étudiant
+  const thisMonthAbsences = (attendanceRecords as any[])?.filter((a: any) => {
+    // useAttendanceByStudent retourne des enregistrements avec studentId
+    const isCurrentStudent = !studentId || a.studentId === studentId || a.student_id === studentId;
+    return isCurrentStudent && (a.status === 'absent' || a.isAbsent);
   }).length || 0;
 
-  // Get payment status
+  // Get payment status depuis les feeSchedules de l'élève
   const getPaymentStatus = () => {
-    if (!payments || payments.length === 0) return { status: 'unknown', label: 'Non renseigné', color: 'gray' };
-    const latestPayment = payments[0];
-    if (latestPayment.status === 'paid') {
-      return { status: 'ok', label: 'À jour', color: 'green' };
-    } else if (latestPayment.status === 'partial') {
-      return { status: 'warning', label: 'Partiel', color: 'yellow' };
-    } else {
-      return { status: 'blocked', label: 'En retard', color: 'red' };
-    }
+    const schedules = studentFeeSchedules as any[];
+    if (!schedules || schedules.length === 0) return { status: 'unknown', label: 'Non renseigné', color: 'gray' };
+    const hasOverdue = schedules.some((s: any) => s.status === 'overdue');
+    const hasPartial = schedules.some((s: any) => s.status === 'partial');
+    const allPaid = schedules.every((s: any) => s.status === 'paid');
+    if (allPaid) return { status: 'ok', label: 'À jour', color: 'green' };
+    if (hasOverdue) return { status: 'blocked', label: 'En retard', color: 'red' };
+    if (hasPartial) return { status: 'warning', label: 'Partiel', color: 'yellow' };
+    return { status: 'unknown', label: 'En attente', color: 'gray' };
   };
 
   const paymentStatus = getPaymentStatus();
