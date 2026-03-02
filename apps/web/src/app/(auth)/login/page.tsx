@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema } from '@novaconnect/core';
 import { useAuthContext } from '@novaconnect/data/providers';
 import { Button, Input } from '@novaconnect/ui/web';
+import { Loader2 } from 'lucide-react';
 import type { z } from 'zod';
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -77,10 +78,10 @@ function LoginForm() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Acces</p>
-        <h2 className="mt-3 text-3xl font-semibold text-slate-900">Connexion</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Accès Sécurisé</p>
+        <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">Bon retour !</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Connectez-vous pour acceder a votre espace NovaConnectSchool.
+          Connectez-vous pour accéder à votre espace NovaConnect.
         </p>
       </div>
 
@@ -135,14 +136,21 @@ function LoginForm() {
           </Link>
         </div>
 
-        <Button type="submit" fullWidth disabled={isLoading} className="bg-slate-900 text-white hover:bg-slate-800">
-          {isLoading ? 'Connexion...' : 'Se connecter'}
+        <Button type="submit" fullWidth disabled={isLoading} className="h-11 bg-blue-600 text-base font-medium text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-lg active:scale-[0.98] disabled:opacity-70 disabled:hover:translate-y-0 disabled:cursor-not-allowed">
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Connexion en cours...
+            </span>
+          ) : (
+            'Se connecter'
+          )}
         </Button>
 
         <p className="text-center text-sm text-slate-600">
           Pas encore de compte ?{' '}
-          <Link href="/register" className="font-semibold text-slate-900 hover:text-slate-700">
-            Creer un compte
+          <Link href="/register" className="font-semibold text-blue-600 transition-colors hover:text-blue-700">
+            Créer un compte
           </Link>
         </p>
       </form>

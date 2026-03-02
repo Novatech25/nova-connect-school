@@ -9,6 +9,7 @@ import {
   usePeriods,
   useCurrentAcademicYear,
   useAcademicYears,
+  useSubjectCategories,
 } from '@novaconnect/data';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -138,7 +139,6 @@ export default function BulkGradeEntryPage() {
     );
   }, [allClasses, selectedLevelId]);
 
-  // Get subjects for selected class
   const subjectsForClass = useMemo(() => {
     if (!config.classId) return [];
     return (assignments as any[])
@@ -148,6 +148,32 @@ export default function BulkGradeEntryPage() {
         index === self.findIndex((s: any) => s.id === subject.id)
       );
   }, [assignments, config.classId]);
+
+  const selectedClass = useMemo(() => {
+    return classes.find((cls: any) => cls.id === config.classId);
+  }, [classes, config.classId]);
+
+  const isUniversity = selectedClass?.level?.levelType === 'university';
+  const { data: categories = [] } = useSubjectCategories(schoolId);
+  const [entryCategoryId, setEntryCategoryId] = useState('all');
+
+  const filteredSubjects = useMemo(() => {
+    let result = subjectsForClass;
+    if (isUniversity && entryCategoryId !== 'all') {
+      result = result.filter((subject: any) => subject.categoryId === entryCategoryId);
+    }
+    return result;
+  }, [subjectsForClass, entryCategoryId, isUniversity]);
+
+  useEffect(() => {
+    if (!config.subjectId || !isUniversity) return;
+    const selectedSubject = filteredSubjects.find((subject: any) => subject.id === config.subjectId);
+    if (selectedSubject && selectedSubject.coefficient) {
+      setConfig(prev => ({ ...prev, coefficient: selectedSubject.coefficient }));
+    } else {
+      setConfig(prev => ({ ...prev, coefficient: 1 }));
+    }
+  }, [config.subjectId, filteredSubjects, isUniversity]);
 
   // Get enrollments (students) for selected class
   const { data: enrollments = [], isLoading: isLoadingStudents } = useEnrollmentsByClass(
@@ -434,10 +460,28 @@ export default function BulkGradeEntryPage() {
                 />
               </div>
 
+              {/* UE Selection */}
+              {isUniversity && (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <Label htmlFor="entryCategoryId" className="text-xs sm:text-sm">Unité d'Ens. (UE)</Label>
+                  <SearchableSelect
+                    options={categories.map((cat: any) => ({ value: cat.id, label: cat.name }))}
+                    value={entryCategoryId}
+                    onValueChange={(v) => {
+                      setEntryCategoryId(v === 'all' ? 'all' : v);
+                      handleConfigChange('subjectId', ''); // Reset subject
+                    }}
+                    placeholder="Toutes les UE"
+                    searchPlaceholder="Rechercher une UE..."
+                    allLabel="Toutes les UE"
+                  />
+                </div>
+              )}
+
               <div className="space-y-1.5 sm:space-y-2">
                 <Label htmlFor="subjectId" className="text-xs sm:text-sm">Matière *</Label>
                 <SearchableSelect
-                  options={subjectsForClass.map((subject: any) => ({ value: subject.id, label: subject.name }))}
+                  options={filteredSubjects.map((subject: any) => ({ value: subject.id, label: subject.name }))}
                   value={config.subjectId || 'all'}
                   onValueChange={(v) => handleConfigChange('subjectId', v === 'all' ? '' : v)}
                   placeholder="Matière"

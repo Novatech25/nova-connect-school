@@ -29,6 +29,7 @@ export const bulkPromotionItemSchema = z.object({
   targetClassId: z.string().uuid(),
   isRepeating: z.boolean(),
   notes: z.string().optional(),
+  annualTuitionAmount: z.number().optional(),
 });
 
 export type BulkPromotionItem = z.infer<typeof bulkPromotionItemSchema>;

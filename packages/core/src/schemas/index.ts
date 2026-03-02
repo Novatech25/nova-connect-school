@@ -206,10 +206,12 @@ export const subjectSchema = z.object({
   id: z.string().uuid(),
   schoolId: z.string().uuid(),
   levelId: z.string().uuid().nullable().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
   name: z.string().min(1),
   code: z.string().min(1),
   description: z.string().optional(),
   grade: z.string().optional(),
+  coefficient: z.number().positive().optional(),
   icon: z.string().optional(),
   color: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
   isActive: z.boolean().optional(),
@@ -221,6 +223,24 @@ export const createSubjectSchema = subjectSchema.partial({
   id: true,
   icon: true,
   color: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Subject Category (UE) schemas
+export const subjectCategorySchema = z.object({
+  id: z.string().uuid(),
+  schoolId: z.string().uuid(),
+  name: z.string().min(1),
+  code: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  color: z.string().regex(/^#[0-9A-F]{6}$/i).optional().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export const createSubjectCategorySchema = subjectCategorySchema.partial({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });

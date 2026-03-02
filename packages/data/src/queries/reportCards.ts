@@ -124,7 +124,8 @@ export const reportCardQueries = {
   generateBatch: () => ({
     mutationFn: async (input: GenerateBatchReportCardsInput) => {
       const supabase = getSupabaseClient();
-      const strategy = 'gateway-first';
+      // ALWAYS use Supabase Edge Functions directly to avoid silent failures when Gateway is down
+      const strategy = 'supabase-first' as const;
 
       const generateInGateway = async () => {
         const data = await gatewayRequest(
@@ -159,6 +160,7 @@ export const reportCardQueries = {
                 studentId: enrollment.student_id,
                 periodId: input.periodId,
                 regenerate: input.regenerate,
+                templateId: input.templateId,
               },
               headers: {
                 Authorization: `Bearer ${supabaseAnonKey}`,
@@ -169,8 +171,20 @@ export const reportCardQueries = {
           )
         );
 
-        const successful = results.filter(r => r.status === 'fulfilled').length;
-        const failed = results.filter(r => r.status === 'rejected').length;
+        const successful = results.filter(r => 
+          r.status === 'fulfilled' && !r.value?.error
+        ).length;
+
+        const failedResults = results.filter(r => 
+          r.status === 'rejected' || (r.status === 'fulfilled' && r.value?.error)
+        );
+        
+        const failed = failedResults.length;
+
+        // Log detail for devs
+        if (failed > 0) {
+          console.error('[generateBatch] Failed generations:', failedResults.map(r => r.status === 'fulfilled' ? r.value.error : r.reason));
+        }
 
         return { successful, failed, total: enrollments.length };
       };

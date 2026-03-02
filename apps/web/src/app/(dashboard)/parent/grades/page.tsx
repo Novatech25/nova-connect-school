@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { useGrades, useReportCards } from '@novaconnect/data'
@@ -22,6 +24,7 @@ import { fr } from 'date-fns/locale'
 import {
   AlertCircle,
   BookOpen,
+  Calendar as CalendarIcon,
   ChevronDown,
   Download,
   Filter,
@@ -75,6 +78,7 @@ export default function MyGradesPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all')
   const [selectedSubject, setSelectedSubject] = useState<string>('all')
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('all')
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>()
   const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'subject' | 'score'>('date')
 
@@ -265,6 +269,16 @@ export default function MyGradesPage() {
     if (selectedAcademicYear !== 'all' && grade.academicYearId !== selectedAcademicYear) return false
     if (selectedPeriod !== 'all' && grade.period?.id !== selectedPeriod) return false
     if (selectedSubject !== 'all' && grade.subject?.id !== selectedSubject) return false
+    if (selectedDate) {
+      const gradeDate = new Date(grade.createdAt)
+      if (
+        gradeDate.getFullYear() !== selectedDate.getFullYear() ||
+        gradeDate.getMonth() !== selectedDate.getMonth() ||
+        gradeDate.getDate() !== selectedDate.getDate()
+      ) {
+        return false
+      }
+    }
     return true
   })
 
@@ -542,6 +556,46 @@ export default function MyGradesPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5 sm:space-y-2">
+                <label className="text-xs font-medium text-gray-700 w-full flex justify-between">
+                  Date spécifique
+                  {selectedDate && (
+                    <button 
+                      onClick={() => setSelectedDate(undefined)}
+                      className="text-[10px] text-red-500 hover:text-red-700"
+                    >
+                      Effacer
+                    </button>
+                  )}
+                </label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={'outline'}
+                      className={cn(
+                        'w-full justify-start text-left font-normal text-xs sm:text-sm h-8 sm:h-9',
+                        !selectedDate && 'text-muted-foreground'
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedDate ? (
+                        formatDistanceToNow(selectedDate, { locale: fr, addSuffix: true }).replace('environ ', '')
+                      ) : (
+                        <span>Sélectionner une date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      initialFocus
+                      locale={fr}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-1.5 sm:space-y-2">
                 <label className="text-xs font-medium text-gray-700">Trier par</label>

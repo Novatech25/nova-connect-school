@@ -27,7 +27,7 @@ import {
     ArrowRight,
     FileText,
     DollarSign,
-    Calendar,
+    Calendar as CalendarIcon,
     ChevronDown,
     Filter
 } from "lucide-react";
@@ -48,6 +48,9 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { generatePaymentReceiptPDF } from "@/lib/paymentReceiptPdf";
 
 // Types
 interface Student {
@@ -100,6 +103,9 @@ export default function PaymentsPage() {
     const [selectedType, setSelectedType] = useState<string>("all");
     const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>("all");
     const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+    const [periodFilter, setPeriodFilter] = useState<string>("all");
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     // --- Data Fetching (Parent & Children) ---
     const fetchChildren = async () => {
@@ -317,6 +323,26 @@ export default function PaymentsPage() {
         }
     }
 
+    const displayedPayments = activePayments.filter((p: any) => {
+        const pDateStr = p.payment_date || p.created_at;
+        if (!pDateStr) return false;
+        
+        const pDate = new Date(pDateStr);
+        if (selectedDate) {
+            if (format(pDate, 'yyyy-MM-dd') !== format(selectedDate, 'yyyy-MM-dd')) return false;
+        } else if (periodFilter !== "all") {
+            const end = new Date();
+            let start = new Date();
+            if (periodFilter === "30days") start.setDate(end.getDate() - 30);
+            else if (periodFilter === "90days") start.setDate(end.getDate() - 90);
+            else if (periodFilter === "year") start.setFullYear(end.getFullYear() - 1);
+            
+            start.setHours(0,0,0,0);
+            if (pDate < start) return false;
+        }
+        return true;
+    });
+
     // Filtered Fees Logic for display (needs to be consistent with above)
     // We can't easily inject "virtual status" into the filtered list without complex logic.
     // For now, let's keep the list display based on the raw data, but maybe update the "status" badge visually if we want.
@@ -349,17 +375,32 @@ export default function PaymentsPage() {
     const uniqueAcademicYears = Array.from(new Set(displayedAcademicYears.map((y: any) => y.id)))
         .map(id => displayedAcademicYears.find((y: any) => y.id === id));
 
-    const handleDownloadReceipt = (paymentId: string) => {
-        toast({
-            title: "Téléchargement",
-            description: "Le reçu est en cours de génération...",
-        });
-        setTimeout(() => {
-            toast({
-                title: "Succès",
-                description: "Reçu téléchargé avec succès.",
+    const handleDownloadReceipt = async (payment: any) => {
+        if (downloadingId === payment.id) return;
+        setDownloadingId(payment.id);
+        try {
+            await generatePaymentReceiptPDF({
+                payment,
+                student: {
+                    first_name: selectedStudent?.firstName || selectedStudent?.first_name,
+                    last_name: selectedStudent?.lastName || selectedStudent?.last_name,
+                    matricule: selectedStudent?.matricule,
+                    enrollments: selectedStudent?.enrollments,
+                },
+                school: selectedStudent?.school || undefined,
+                totalDue,
+                totalPaid,
             });
-        }, 1500);
+        } catch (err) {
+            console.error('Erreur génération PDF:', err);
+            toast({
+                title: 'Erreur',
+                description: 'Impossible de générer le reçu PDF.',
+                variant: 'destructive',
+            });
+        } finally {
+            setDownloadingId(null);
+        }
     };
 
     const handlePayNow = () => {
@@ -482,7 +523,7 @@ export default function PaymentsPage() {
                     <Card className="relative overflow-hidden border-blue-200 bg-gradient-to-br from-blue-50 to-white">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-gray-600">Prochaine échéance</CardTitle>
-                            <Calendar className="h-4 w-4 text-blue-600" />
+                            <CalendarIcon className="h-4 w-4 text-blue-600" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-lg font-bold text-blue-700 truncate">
@@ -508,7 +549,7 @@ export default function PaymentsPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-                        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
                             <div className="space-y-1.5 sm:space-y-2">
                                 <label className="text-xs font-medium text-gray-700">Statut</label>
                                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -551,6 +592,57 @@ export default function PaymentsPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="space-y-1.5 sm:space-y-2">
+                                <label className="text-xs font-medium text-gray-700">Période (Histo.)</label>
+                                <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                                    <SelectTrigger className="text-xs sm:text-sm h-8 sm:h-9">
+                                        <SelectValue placeholder="Période" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Toutes les dates</SelectItem>
+                                        <SelectItem value="30days">30 derniers jours</SelectItem>
+                                        <SelectItem value="90days">90 derniers jours</SelectItem>
+                                        <SelectItem value="year">12 derniers mois</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5 sm:space-y-2">
+                                <label className="text-xs font-medium text-gray-700">Date (Histo.)</label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            className={cn(
+                                                "w-full justify-start text-left font-normal text-xs sm:text-sm h-8 sm:h-9",
+                                                !selectedDate && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {selectedDate ? format(selectedDate, "dd/MM/yyyy", { locale: fr }) : "Date exacte"}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                            mode="single"
+                                            selected={selectedDate}
+                                            onSelect={setSelectedDate}
+                                            initialFocus
+                                            locale={fr}
+                                        />
+                                        {selectedDate && (
+                                            <div className="p-2 border-t border-border/60">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    className="w-full text-xs h-8" 
+                                                    onClick={() => setSelectedDate(undefined)}
+                                                >
+                                                    Effacer la date
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </PopoverContent>
+                                </Popover>
                             </div>
                         </div>
                     </CardContent>
@@ -650,20 +742,20 @@ export default function PaymentsPage() {
                                     <div className="space-y-3">
                                         {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
                                     </div>
-                                ) : activePayments.length === 0 ? (
+                                ) : displayedPayments.length === 0 ? (
                                     <div className="text-center py-8 text-muted-foreground">
-                                        Aucun paiement enregistré.
+                                        Aucun paiement enregistré pour cette période.
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {activePayments.map((payment: any) => (
+                                        {displayedPayments.map((payment: any) => (
                                             <div key={payment.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border hover:bg-gray-50 transition-colors gap-4">
                                                 <div className="space-y-1">
                                                     <div className="font-medium text-gray-900">
                                                         Paiement #{payment.receipt_number || payment.id.slice(0, 8)}
                                                     </div>
                                                     <div className="text-sm text-gray-500 flex items-center gap-2">
-                                                        <Calendar className="h-3 w-3" />
+                                                        <CalendarIcon className="h-3 w-3" />
                                                         {format(new Date(payment.payment_date || payment.created_at), "d MMMM yyyy", { locale: fr })}
                                                         <span className="text-gray-300">•</span>
                                                         {payment.payment_method === "CASH" ? "Espèces" : 
@@ -677,7 +769,7 @@ export default function PaymentsPage() {
                                                         <div className="font-bold text-green-700">+{Math.round(payment.amount).toLocaleString('fr-FR')} FCFA</div>
                                                         <div className="text-xs text-gray-500">Validé</div>
                                                     </div>
-                                                    <Button variant="ghost" size="icon" onClick={() => handleDownloadReceipt(payment.id)}>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDownloadReceipt(payment)}>
                                                         <Download className="h-4 w-4 text-gray-500" />
                                                     </Button>
                                                 </div>

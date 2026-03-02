@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Search, FileText, Receipt, Eye, X, Users, Download, Bell, Send } from 'lucide-react';
+import { Search, FileText, Receipt, Eye, X, Download, Bell, Send } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -22,7 +22,8 @@ import {
   useSchool,
   useSendReminders,
 } from '@novaconnect/data';
-import { getAcademicYearsSecure } from '@/actions/payment-actions';
+import { getAcademicYearsSecure, getStudentPaymentsSecure, getStudentFeeSchedulesSecure } from '@/actions/payment-actions';
+import { generateFinancialReportPdf } from '@/lib/pdf/financialReportPdf';
 
 const cycleLabels: Record<string, string> = {
   primary: 'Primaire',
@@ -64,7 +65,15 @@ const scheduleStatusStyles: Record<string, string> = {
 
 const formatCurrency = (value?: number | null) => {
   const safeValue = typeof value === 'number' ? value : 0;
-  return `${Math.round(safeValue).toLocaleString('fr-FR')} FCFA`;
+  // Formatage robuste et sans regex complexes qui risquent d'être mal échappées
+  let formatted = new Intl.NumberFormat('fr-FR').format(Math.round(safeValue));
+  formatted = formatted.split(String.fromCharCode(8239)).join(' '); // espace insécable
+  formatted = formatted.split(String.fromCharCode(160)).join(' ');  // espace insécable classique
+  
+  // Remplacer tout autre espace éventuel par un espace simple
+  formatted = formatted.split(' ').join(' ');
+
+  return `${formatted} FCFA`;
 };
 
 const formatDate = (value?: string | Date | null) => {
@@ -84,6 +93,13 @@ export default function AccountantPaymentsPage() {
     (user?.user_metadata as any)?.school_id ||
     (user as any)?.schoolId ||
     (user as any)?.school_id;
+
+  const meta = (user as any)?.user_metadata || {};
+  const accountantName = [meta.first_name, meta.last_name].filter(Boolean).join(' ')
+    || profile?.fullName || profile?.full_name
+    || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim()
+    || user?.email || 'Comptable';
+
 
   const [activeTab, setActiveTab] = useState<'students' | 'payments' | 'schedules' | 'exemptions'>('students');
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,6 +140,8 @@ export default function AccountantPaymentsPage() {
   const [generatingPaymentId, setGeneratingPaymentId] = useState<string | null>(null);
 
   const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [selectedStudentForPdf, setSelectedStudentForPdf] = useState<string | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState<boolean>(false);
 
   useEffect(() => {
     async function loadYears() {
@@ -147,6 +165,7 @@ export default function AccountantPaymentsPage() {
   const { data: enrollments = [] } = useEnrollments(schoolId || '', activeAcademicYearId || undefined);
   const { data: feeTypes = [] } = useFeeTypes(schoolId || '');
   const { data: students = [] } = useStudents(schoolId || '');
+  const { school: schoolInfo } = useSchool(schoolId || '');
 
   const paymentFilters = useMemo(() => {
     return {
@@ -181,8 +200,6 @@ export default function AccountantPaymentsPage() {
       console.log('⚠️ No fee schedules found with filters:', scheduleFilters);
     }
   }, [feeSchedules, schedulesLoading]);
-  const { data: paymentStats } = usePaymentStats(schoolId || '', activeAcademicYearId || '');
-  const { school: schoolInfo } = useSchool(schoolId || '');
   const { data: paymentExemptions = [], isLoading: exemptionsLoading } = usePaymentExemptions(
     schoolId || '',
     studentFilter !== 'all' ? studentFilter : undefined
@@ -552,12 +569,6 @@ export default function AccountantPaymentsPage() {
     }
 
     // ── Bloc droite : titre rapport + date de génération + comptable ───
-    const meta = (user as any)?.user_metadata || {};
-    const accountantName = [meta.first_name, meta.last_name].filter(Boolean).join(' ')
-      || profile?.fullName || profile?.full_name
-      || `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim()
-      || user?.email || 'Comptable';
-
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
@@ -847,6 +858,49 @@ export default function AccountantPaymentsPage() {
     setPaymentDetailsOpen(true);
   };
 
+  const handleGenerateComprehensiveReport = async () => {
+    if (!selectedStudentForPdf || !schoolInfo) return;
+    
+    setIsGeneratingReport(true);
+    try {
+      // 1. Get the actual student object
+      const targetStudent = (students as any[]).find((s: any) => s.id === selectedStudentForPdf);
+      if (!targetStudent) throw new Error("Élève introuvable");
+
+      // 2. Fetch all raw data explicitly via server action 
+      //    to bypass any academic year filters, getting the entire history.
+      const [paymentsRes, schedulesRes] = await Promise.all([
+        getStudentPaymentsSecure(selectedStudentForPdf),
+        getStudentFeeSchedulesSecure(selectedStudentForPdf) // Notice: No activeAcademicYearId passed!
+      ]);
+
+      if (paymentsRes.error) throw new Error(paymentsRes.error);
+      if (schedulesRes.error) throw new Error(schedulesRes.error);
+
+      // 3. Get Student's current Class for UI display
+      const enrollment = enrollments.find((e: any) => e.studentId === selectedStudentForPdf);
+      const studentClassId = enrollment?.classId;
+      const classInfo = studentClassId ? classById.get(studentClassId) : null;
+
+      // 4. Generate the PDF
+      await generateFinancialReportPdf(
+        schoolInfo,
+        targetStudent,
+        classInfo,
+        schedulesRes.data,
+        paymentsRes.data,
+        academicYears,
+        accountantName
+      );
+
+    } catch (error: any) {
+      console.error("Erreur lors de la génération du rapport:", error);
+      alert(error.message || "Impossible de générer le rapport PDF.");
+    } finally {
+      setIsGeneratingReport(false);
+      setSelectedStudentForPdf(null); // Reset selection
+    }
+  };
 
 
   if (!schoolId) {
@@ -867,7 +921,7 @@ export default function AccountantPaymentsPage() {
   if (feeSchedules.length > 0) {
     console.log('Sample fee schedule:', feeSchedules[0]);
   }
-  studentBalances.forEach((balance, studentId) => {
+  studentBalances.forEach((balance: any, studentId: string) => {
     console.log(`Student ${studentId} balance:`, balance);
   });
   console.log('Payments loaded:', payments.length);
@@ -1080,10 +1134,34 @@ export default function AccountantPaymentsPage() {
 
       {activeTab === 'students' && (
         <div className="rounded-lg bg-white shadow">
+          {/* Nouveau: Barre d'en-tête pour les élèves */}
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <div className="text-sm text-gray-500">
+              Cochez un élève pour générer son historique financier complet (toutes années).
+            </div>
+            <button
+              onClick={handleGenerateComprehensiveReport}
+              disabled={!selectedStudentForPdf || isGeneratingReport}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isGeneratingReport ? (
+                <span className="flex items-center gap-2">Génération...</span>
+              ) : (
+                <>
+                  <FileText className="h-4 w-4" />
+                  Rapport Global PDF
+                </>
+              )}
+            </button>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 w-10">
+                    {/* Empty header for radio buttons */}
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Eleve</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Classe</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Total a payer</th>
@@ -1122,8 +1200,20 @@ export default function AccountantPaymentsPage() {
                     }
 
                     return (
-                      <tr key={enrollment.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">
+                      <tr key={enrollment.id} className={`hover:bg-gray-50 ${selectedStudentForPdf === student.id ? 'bg-blue-50/50' : ''}`}>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="radio"
+                            name="studentPdfSelection"
+                            className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            checked={selectedStudentForPdf === student.id}
+                            onChange={() => setSelectedStudentForPdf(student.id)}
+                          />
+                        </td>
+                        <td 
+                          className="px-4 py-3 text-sm text-gray-900 cursor-pointer"
+                          onClick={() => setSelectedStudentForPdf(student.id)}
+                        >
                           <div className="font-medium">{student.firstName} {student.lastName}</div>
                           {student.matricule && (
                             <div className="text-xs text-gray-500">{student.matricule}</div>

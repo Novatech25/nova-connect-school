@@ -53,12 +53,14 @@ export const generateReportCardSchema = z.object({
   studentId: z.string().uuid(),
   periodId: z.string().uuid(),
   regenerate: z.boolean().optional().default(false),
+  templateId: z.string().optional(),
 }).strict();
 
 export const generateBatchReportCardsSchema = z.object({
   classId: z.string().uuid(),
   periodId: z.string().uuid(),
   regenerate: z.boolean().optional().default(false),
+  templateId: z.string().optional(),
 }).strict();
 
 export const publishReportCardSchema = z.object({

@@ -187,19 +187,27 @@ serve(async (req) => {
         : `${supabaseUrl}/functions/v1/verify-receipt?token=${encodeURIComponent(verificationToken)}`;
     const qrModules = generateQRCodeMatrix(verificationUrl);
 
-    // Generate PDF
+    // Generate PDF - Récupérer la classe et le niveau de l'élève
     let className: string | undefined = undefined;
+    let levelName: string | undefined = undefined;
     const academicYearId = feeSchedule?.academic_year_id;
     if (student?.id && academicYearId) {
       const { data: enrollment } = await supabase
         .from('enrollments')
-        .select('classes(name)')
+        .select(`
+          classes(name, grades(name))
+        `)
         .eq('student_id', student.id)
         .eq('academic_year_id', academicYearId)
+        .eq('status', 'active')
         .limit(1)
         .maybeSingle();
 
-      className = (enrollment as any)?.classes?.name;
+      const cls = (enrollment as any)?.classes;
+      const gradeName = cls?.grades?.name;
+      const classNameOnly = cls?.name;
+      className = gradeName ? `${classNameOnly} (${gradeName})` : classNameOnly;
+      levelName = gradeName;
     }
 
     const receiptData = {
@@ -214,7 +222,11 @@ serve(async (req) => {
       status: 'active',
       verificationUrl,
       cashier: payment.cashier,
-      student: { ...student, class_name: className },
+      student: { 
+        ...student, 
+        class_name: className || 'Non inscrit',
+        level_name: levelName || ''
+      },
       feeType,
       feeSchedule,
       // Ces champs peuvent ne pas exister dans la table payments

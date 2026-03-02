@@ -1,9 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useAuthContext,
   useClasses,
+  useAcademicYears,
+  useLevels,
   useCurrentAcademicYear,
   useExportReportCards,
   useGenerateBatchReportCards,
@@ -19,6 +22,14 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Download, FileText, RefreshCw, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ReportCardsTable } from './components/ReportCardsTable';
 import { GenerateDialog } from './components/GenerateDialog';
 import { GenerationModeIndicator } from '@/components/report-card/GenerationModeIndicator';
@@ -39,11 +50,16 @@ const PAYMENT_LABELS: Record<string, string> = {
 export default function ReportCardsPage() {
   const { profile, user } = useAuthContext();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<ReportCardStatus | 'all'>('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<PaymentBlockStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showBatchDialog, setShowBatchDialog] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('classic');
 
   const schoolId =
     profile?.school?.id ||
@@ -69,10 +85,27 @@ export default function ReportCardsPage() {
   }
 
   const { data: currentAcademicYear } = useCurrentAcademicYear(schoolId);
-  const academicYearId = currentAcademicYear?.id || '';
+  const currentAcademicYearId = currentAcademicYear?.id || '';
 
-  const { data: periods } = usePeriods(schoolId, academicYearId);
-  const { data: classes } = useClasses(schoolId, academicYearId);
+  const { data: academicYears = [] } = useAcademicYears(schoolId);
+  const { data: levels = [] } = useLevels(schoolId);
+  const { data: periods = [] } = usePeriods(schoolId, selectedAcademicYear);
+  const { data: classes = [] } = useClasses(schoolId, selectedAcademicYear);
+
+  // Set default year when available
+  useMemo(() => {
+    if (academicYears.length > 0 && !selectedAcademicYear) {
+      const currentYear = (academicYears as any[]).find((y: any) => y.is_current) || (academicYears as any[])[0];
+      if (currentYear) {
+        setSelectedAcademicYear(currentYear.id);
+      }
+    }
+  }, [academicYears, selectedAcademicYear]);
+
+  // Compute filtered classes based on selected level
+  const filteredClasses = classes.filter((c: any) => 
+    selectedLevel === 'all' || c.level_id === selectedLevel || c.levelId === selectedLevel
+  );
 
   const statusFilter = selectedStatus === 'all' ? undefined : selectedStatus;
   const paymentStatusFilter = selectedPaymentStatus === 'all' ? undefined : selectedPaymentStatus;
@@ -82,13 +115,13 @@ export default function ReportCardsPage() {
     classId: selectedClass || undefined,
     status: statusFilter,
     paymentStatus: paymentStatusFilter,
-    academicYearId: academicYearId || undefined,
+    academicYearId: selectedPeriod ? undefined : (selectedAcademicYear || undefined),
   });
 
   const generateBatch = useGenerateBatchReportCards();
   const exportCards = useExportReportCards();
 
-  const handleGenerateBatch = async () => {
+  const triggerGenerateBatch = () => {
     if (!selectedClass || !selectedPeriod) {
       toast({
         title: 'Erreur',
@@ -97,17 +130,27 @@ export default function ReportCardsPage() {
       });
       return;
     }
+    setShowBatchDialog(true);
+  };
+
+  const handleGenerateBatch = async () => {
+    setShowBatchDialog(false);
 
     try {
       const result = await generateBatch.mutateAsync({
         classId: selectedClass,
         periodId: selectedPeriod,
+        regenerate: true,
+        templateId: selectedTemplate,
       });
 
       toast({
         title: 'Génération terminée',
         description: `${result.successful} bulletins générés avec succès, ${result.failed} échecs.`,
       });
+
+      // Force refreshing the table data
+      await queryClient.invalidateQueries({ queryKey: ['report_cards'] });
     } catch (error: any) {
       const errorMessage =
         error?.context?.message ||
@@ -162,7 +205,7 @@ export default function ReportCardsPage() {
     if (!reportCards) return [];
     const query = searchQuery.trim().toLowerCase();
     if (!query) return reportCards;
-    return reportCards.filter((card) => {
+    return reportCards.filter((card: any) => {
       const student = card.student;
       const fullName = `${student?.firstName || ''} ${student?.lastName || ''}`.trim().toLowerCase();
       const matricule = student?.matricule?.toLowerCase() || '';
@@ -172,6 +215,14 @@ export default function ReportCardsPage() {
 
   const activeFiltersLabel = useMemo(() => {
     const labels: string[] = [];
+    if (selectedAcademicYear) {
+      const yearName = academicYears?.find((y: any) => y.id === selectedAcademicYear)?.name;
+      labels.push(yearName ? `Année: ${yearName}` : 'Année');
+    }
+    if (selectedLevel !== 'all') {
+      const levelName = levels?.find((l: any) => l.id === selectedLevel)?.name;
+      labels.push(levelName ? `Niveau: ${levelName}` : 'Niveau');
+    }
     if (selectedClass) {
       const className = classes?.find((cls: any) => cls.id === selectedClass)?.name;
       labels.push(className ? `Classe: ${className}` : 'Classe');
@@ -193,6 +244,7 @@ export default function ReportCardsPage() {
   }, [classes, periods, searchQuery, selectedClass, selectedPaymentStatus, selectedPeriod, selectedStatus]);
 
   const resetFilters = () => {
+    setSelectedLevel('all');
     setSelectedClass('');
     setSelectedPeriod('');
     setSelectedStatus('all');
@@ -209,7 +261,7 @@ export default function ReportCardsPage() {
             <GenerationModeIndicator />
           </div>
         </div>
-        <GenerateDialog schoolId={schoolId} academicYearId={academicYearId} />
+        <GenerateDialog schoolId={schoolId} academicYearId={currentAcademicYearId} />
       </div>
 
       <Card>
@@ -217,7 +269,31 @@ export default function ReportCardsPage() {
           <CardTitle>Filtres et actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+            <SearchableSelect
+              options={(academicYears || []).map((y: any) => ({ value: y.id, label: y.name }))}
+              value={selectedAcademicYear}
+              onValueChange={(val) => {
+                setSelectedAcademicYear(val);
+                setSelectedPeriod(''); // Reset period when year changes
+                setSelectedClass(''); // Optional but logical
+              }}
+              placeholder={academicYears?.length ? 'Année scolaire' : 'Chargement...'}
+              searchPlaceholder="Rechercher une année..."
+            />
+
+            <SearchableSelect
+              options={(levels || []).map((l: any) => ({ value: l.id, label: l.name }))}
+              value={selectedLevel}
+              onValueChange={(val) => {
+                setSelectedLevel(val);
+                setSelectedClass(''); // Reset class when level changes
+              }}
+              placeholder={levels?.length ? 'Niveau' : 'Chargement...'}
+              searchPlaceholder="Rechercher un niveau..."
+              allLabel="Tous les niveaux"
+            />
+
             <SearchableSelect
               options={(periods || []).map((p: any) => ({ value: p.id, label: p.name }))}
               value={selectedPeriod}
@@ -227,10 +303,10 @@ export default function ReportCardsPage() {
             />
 
             <SearchableSelect
-              options={(classes || []).map((c: any) => ({ value: c.id, label: c.name }))}
+              options={(filteredClasses || []).map((c: any) => ({ value: c.id, label: c.name }))}
               value={selectedClass}
               onValueChange={setSelectedClass}
-              placeholder={classes?.length ? 'Sélectionner une classe' : 'Chargement...'}
+              placeholder={filteredClasses?.length ? 'Sélectionner une classe' : 'Aucune classe'}
               searchPlaceholder="Rechercher une classe..."
             />
 
@@ -284,7 +360,7 @@ export default function ReportCardsPage() {
 
           <div className="flex flex-wrap gap-2">
             <Button
-              onClick={handleGenerateBatch}
+              onClick={triggerGenerateBatch}
               disabled={!selectedClass || !selectedPeriod || generateBatch.isPending}
             >
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -311,6 +387,59 @@ export default function ReportCardsPage() {
       </Card>
 
       <ReportCardsTable reportCards={filteredReportCards} isLoading={isLoading} />
+
+      {/* Dialog for batch generation template selection */}
+      <Dialog open={showBatchDialog} onOpenChange={setShowBatchDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-blue-600" />
+              Générer pour la classe
+            </DialogTitle>
+            <DialogDescription>
+              Vous allez générer les bulletins pour tous les élèves de la classe sélectionnée.
+              Quel modèle de document souhaitez-vous appliquer ?
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-2">
+            <label className="text-sm font-medium text-slate-700 mb-2 block">
+              Choix de la couleur thématique
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { id: 'classic', name: 'Défaut', desc: 'Selon le niveau', bg: 'bg-slate-800' },
+                { id: 'blue', name: 'Bleu', bg: 'bg-blue-700' },
+                { id: 'green', name: 'Vert', bg: 'bg-emerald-600' },
+                { id: 'purple', name: 'Violet', bg: 'bg-purple-700' },
+                { id: 'red', name: 'Rouge', bg: 'bg-rose-700' },
+                { id: 'orange', name: 'Orange', bg: 'bg-orange-600' },
+              ].map(theme => (
+                <label key={theme.id} className={`border rounded-lg p-2 cursor-pointer flex flex-col gap-1 transition-all ${selectedTemplate === theme.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 hover:border-primary/50 bg-white'}`}>
+                  <div className="flex items-center gap-2">
+                    <input type="radio" className="sr-only" name="batch_template_selection" value={theme.id} checked={selectedTemplate === theme.id} onChange={(e) => setSelectedTemplate(e.target.value)} />
+                    <div className={`w-4 h-4 rounded-full ${theme.bg} ${selectedTemplate === theme.id ? 'ring-2 ring-offset-2 ring-primary' : ''}`} />
+                    <span className="font-semibold text-slate-900 text-xs">{theme.name}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBatchDialog(false)}>
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleGenerateBatch}
+              disabled={generateBatch.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {generateBatch.isPending ? 'Génération en cours...' : 'Confirmer la génération'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

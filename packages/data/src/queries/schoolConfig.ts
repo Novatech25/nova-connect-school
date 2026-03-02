@@ -17,6 +17,9 @@ type ClassUpdate = Database["public"]["Tables"]["classes"]["Update"];
 type SubjectInsert = Database["public"]["Tables"]["subjects"]["Insert"];
 type SubjectUpdate = Database["public"]["Tables"]["subjects"]["Update"];
 
+type SubjectCategoryInsert = Database["public"]["Tables"]["subject_categories"]["Insert"];
+type SubjectCategoryUpdate = Database["public"]["Tables"]["subject_categories"]["Update"];
+
 type PeriodInsert = Database["public"]["Tables"]["periods"]["Insert"];
 type PeriodUpdate = Database["public"]["Tables"]["periods"]["Update"];
 
@@ -309,7 +312,7 @@ export const subjectQueries = {
     queryFn: async () => {
       let query = supabase
         .from("subjects")
-        .select("*, level:levels(*)")
+        .select("*, level:levels(*), category:subject_categories(*)")
         .eq("school_id", schoolId)
         .eq("is_active", true);
 
@@ -328,7 +331,7 @@ export const subjectQueries = {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subjects")
-        .select("*, level:levels(*)")
+        .select("*, level:levels(*), category:subject_categories(*)")
         .eq("id", id)
         .single();
       if (error) throw error;
@@ -388,6 +391,73 @@ export const subjectQueries = {
   delete: () => ({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("subjects").delete().eq("id", id);
+      if (error) throw error;
+      return id;
+    },
+  }),
+};
+
+// ============================================
+// SUBJECT CATEGORIES (UE)
+// ============================================
+
+export const subjectCategoryQueries = {
+  getAll: (schoolId: string) => ({
+    queryKey: ["subject_categories", schoolId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subject_categories")
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("name", { ascending: true });
+      if (error) throw error;
+      return snakeToCamelKeys(data);
+    },
+  }),
+
+  getById: (id: string) => ({
+    queryKey: ["subject_categories", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subject_categories")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) throw error;
+      return snakeToCamelKeys(data);
+    },
+  }),
+
+  create: () => ({
+    mutationFn: async (category: SubjectCategoryInsert) => {
+      const payload = camelToSnakeKeys(cleanUndefined(category as any));
+      const { data, error } = await supabase
+        .from("subject_categories")
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return snakeToCamelKeys(data);
+    },
+  }),
+
+  update: () => ({
+    mutationFn: async ({ id, ...update }: SubjectCategoryUpdate & { id: string }) => {
+      const payload = camelToSnakeKeys(cleanUndefined(update as any));
+      const { data, error } = await supabase
+        .from("subject_categories")
+        .update(payload)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return snakeToCamelKeys(data);
+    },
+  }),
+
+  delete: () => ({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("subject_categories").delete().eq("id", id);
       if (error) throw error;
       return id;
     },

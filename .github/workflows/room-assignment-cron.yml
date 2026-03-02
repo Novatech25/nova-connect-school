@@ -2,134 +2,94 @@ name: Room Assignment Automation
 
 on:
   schedule:
-    # Calcul quotidien à 18h00 pour toutes les écoles
-    - cron: '0 18 * * *'
-    # Vérification des notifications toutes les 5 minutes
-    - cron: '*/5 * * * *'
-    # Nettoyage hebdomadaire (dimanche à 3h00)
-    - cron: '0 3 * * 0'
+    # Calcul quotidien à 18h00 UTC (secours si Vercel Cron est down)
+    - cron: "0 18 * * *"
+    # Nettoyage hebdomadaire des anciennes attributions (dimanche 3h00 UTC)
+    - cron: "0 3 * * 0"
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mode execution'
+        description: "Mode execution"
         required: true
-        default: 'all'
+        default: "calculate"
         type: choice
         options:
-          - all
-          - calculate-only
-          - notify-only
-          - cleanup-only
+          - calculate
+          - cleanup
+
+# NOTE: Les notifications T-60 / T-15 sont gérées par Vercel Cron (chaque minute)
+# via /api/cron/room-assignment-notify. Ce workflow GitHub Actions gère uniquement
+# le calcul quotidien (secours) et le nettoyage hebdomadaire.
 
 jobs:
   # ============================================================
   # JOB 1: Calcul des attributions pour TOUTES les écoles
+  # (Secours — Vercel Cron /api/cron/room-assignment-calculate est prioritaire)
   # ============================================================
   calculate-assignments:
     runs-on: ubuntu-latest
     if: |
-      (github.event.schedule == '0 18 * * *') || 
-      (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'calculate-only'))
-    
+      (github.event.schedule == '0 18 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'calculate')
+
     steps:
-      - name: Calculer les attributions pour toutes les écoles
+      - name: Calculer les attributions pour toutes les écoles (J+1)
         run: |
-          echo "📅 Date de calcul: $(date -d '+1 day' +%Y-%m-%d)"
-          echo "🔄 Lancement du calcul multi-écoles..."
-          
-          RESPONSE=$(curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/calculate_room_assignments_all_schools_rpc" \
+          SESSION_DATE=$(date -d '+1 day' +%Y-%m-%d)
+          echo "📅 Date de calcul: $SESSION_DATE"
+          echo "🔄 Lancement du calcul multi-écoles via RPC Postgres..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/calculate_room_assignments_all_schools_rpc" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"p_session_date\": \"$(date -d '+1 day' +%Y-%m-%d)\"
-            }")
-          
-          echo "✅ Résultat:"
-          echo "$RESPONSE" | jq .
-          
-          # Vérifier s'il y a des erreurs
-          SCHOOLS_FAILED=$(echo "$RESPONSE" | jq -r '.schools_failed // 0')
+            -d "{\"p_session_date\": \"$SESSION_DATE\"}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "📊 Résultat (HTTP $HTTP_CODE):"
+          echo "$BODY" | jq .
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Erreur HTTP: $HTTP_CODE"
+            exit 1
+          fi
+
+          SCHOOLS_FAILED=$(echo "$BODY" | jq -r '.schools_failed // 0')
+          SCHOOLS_PROCESSED=$(echo "$BODY" | jq -r '.schools_processed // 0')
+
+          echo "✅ $SCHOOLS_PROCESSED école(s) traitée(s)"
           if [ "$SCHOOLS_FAILED" -gt 0 ]; then
-            echo "⚠️ Attention: $SCHOOLS_FAILED école(s) en erreur"
+            echo "⚠️ $SCHOOLS_FAILED école(s) en erreur — vérifier les logs Supabase"
             exit 1
           fi
 
   # ============================================================
-  # JOB 2: Notifications T-60 (1h avant) pour TOUTES les écoles
-  # ============================================================
-  notify-t60:
-    runs-on: ubuntu-latest
-    if: |
-      (github.event.schedule == '*/5 * * * *') || 
-      (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'notify-only'))
-    
-    steps:
-      - name: Envoyer les notifications T-60min
-        run: |
-          echo "⏰ Fenêtre T-60: $(date +%Y-%m-%d)"
-          echo "🔄 Envoi des rappels pour toutes les écoles..."
-          
-          RESPONSE=$(curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/send_room_assignment_notifications_all_schools_rpc" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"p_notification_window\": 60,
-              \"p_session_date\": \"$(date +%Y-%m-%d)\"
-            }")
-          
-          echo "✅ Résultat T-60:"
-          echo "$RESPONSE" | jq .
-
-  # ============================================================
-  # JOB 3: Notifications T-15 (15min avant) pour TOUTES les écoles
-  # ============================================================
-  notify-t15:
-    runs-on: ubuntu-latest
-    if: |
-      (github.event.schedule == '*/5 * * * *') || 
-      (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'notify-only'))
-    
-    steps:
-      - name: Envoyer les notifications T-15min
-        run: |
-          echo "⏰ Fenêtre T-15: $(date +%Y-%m-%d)"
-          echo "🔄 Envoi des rappels pour toutes les écoles..."
-          
-          RESPONSE=$(curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/send_room_assignment_notifications_all_schools_rpc" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"p_notification_window\": 15,
-              \"p_session_date\": \"$(date +%Y-%m-%d)\"
-            }")
-          
-          echo "✅ Résultat T-15:"
-          echo "$RESPONSE" | jq .
-
-  # ============================================================
-  # JOB 4: Nettoyage hebdomadaire
+  # JOB 2: Nettoyage hebdomadaire des anciennes attributions
   # ============================================================
   cleanup:
     runs-on: ubuntu-latest
     if: |
-      (github.event.schedule == '0 3 * * 0') || 
-      (github.event_name == 'workflow_dispatch' && inputs.mode == 'cleanup-only')
-    
+      (github.event.schedule == '0 3 * * 0') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'cleanup')
+
     steps:
-      - name: Nettoyer les anciennes attributions
+      - name: Nettoyer les attributions de plus de 30 jours
         run: |
-          echo "🧹 Nettoyage des attributions de plus de 30 jours..."
-          
-          RESPONSE=$(curl -s -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/cleanup_old_room_assignments_all_schools_rpc" \
+          echo "🧹 Nettoyage des attributions (draft/cancelled) de plus de 30 jours..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/cleanup_old_room_assignments_all_schools_rpc" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "p_days_to_keep": 30
-            }')
-          
-          echo "✅ Résultat nettoyage:"
-          echo "$RESPONSE" | jq .
+            -d '{"p_days_to_keep": 30}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "📊 Résultat (HTTP $HTTP_CODE):"
+          echo "$BODY" | jq .
+
+          DELETED=$(echo "$BODY" | jq -r '.deleted_count // 0')
+          echo "✅ $DELETED entrée(s) supprimée(s)"

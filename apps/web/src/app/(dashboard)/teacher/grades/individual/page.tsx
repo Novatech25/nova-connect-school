@@ -11,6 +11,7 @@ import {
   usePeriods,
   useCurrentAcademicYear,
   useAcademicYears,
+  useSubjectCategories,
 } from '@novaconnect/data';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -140,7 +141,6 @@ export default function IndividualGradeEntryPage() {
     );
   }, [allClasses, selectedLevelId]);
 
-  // Get subjects for selected class
   const subjectsForClass = useMemo(() => {
     if (!formData.classId) return [];
     return (assignments as any[])
@@ -150,6 +150,32 @@ export default function IndividualGradeEntryPage() {
         index === self.findIndex((s: any) => s.id === subject.id)
       );
   }, [assignments, formData.classId]);
+
+  const selectedClass = useMemo(() => {
+    return classes.find((cls: any) => cls.id === formData.classId);
+  }, [classes, formData.classId]);
+
+  const isUniversity = selectedClass?.level?.levelType === 'university';
+  const { data: categories = [] } = useSubjectCategories(schoolId);
+  const [entryCategoryId, setEntryCategoryId] = useState('all');
+
+  const filteredSubjects = useMemo(() => {
+    let result = subjectsForClass;
+    if (isUniversity && entryCategoryId !== 'all') {
+      result = result.filter((subject: any) => subject.categoryId === entryCategoryId);
+    }
+    return result;
+  }, [subjectsForClass, entryCategoryId, isUniversity]);
+
+  useEffect(() => {
+    if (!formData.subjectId || !isUniversity) return;
+    const selectedSubject = filteredSubjects.find((subject: any) => subject.id === formData.subjectId);
+    if (selectedSubject && selectedSubject.coefficient) {
+      setFormData(prev => ({ ...prev, coefficient: selectedSubject.coefficient }));
+    } else {
+      setFormData(prev => ({ ...prev, coefficient: 1 }));
+    }
+  }, [formData.subjectId, filteredSubjects, isUniversity]);
 
   // Get enrollments (students) for selected class
   const { data: enrollments = [], isLoading: isLoadingStudents } = useEnrollmentsByClass(
@@ -342,11 +368,29 @@ export default function IndividualGradeEntryPage() {
                 />
               </div>
 
+              {/* UE Selection */}
+              {isUniversity && (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <Label htmlFor="entryCategoryId" className="text-xs sm:text-sm">Unité d'Ens. (UE)</Label>
+                  <SearchableSelect
+                    options={categories.map((cat: any) => ({ value: cat.id, label: cat.name }))}
+                    value={entryCategoryId}
+                    onValueChange={(v) => {
+                      setEntryCategoryId(v === 'all' ? 'all' : v);
+                      handleInputChange('subjectId', ''); // Reset subject
+                    }}
+                    placeholder="Toutes les UE"
+                    searchPlaceholder="Rechercher une UE..."
+                    allLabel="Toutes les UE"
+                  />
+                </div>
+              )}
+
               {/* Subject Selection */}
               <div className="space-y-1.5 sm:space-y-2">
                 <Label htmlFor="subjectId" className="text-xs sm:text-sm">Matière *</Label>
                 <SearchableSelect
-                  options={subjectsForClass.map((subject: any) => ({ value: subject.id, label: subject.name }))}
+                  options={filteredSubjects.map((subject: any) => ({ value: subject.id, label: subject.name }))}
                   value={formData.subjectId || 'all'}
                   onValueChange={(v) => handleInputChange('subjectId', v === 'all' ? '' : v)}
                   placeholder="Sélectionnez une matière"

@@ -44,6 +44,23 @@ export const promotionQueries = {
     },
   }),
 
+  // Get period ranking for a class (Palmarès)
+  getPeriodRanking: (classId: string, periodId: string) => ({
+    queryKey: ["promotions", "period_ranking", classId, periodId],
+    queryFn: async () => {
+      const supabase = getSupabaseClient();
+
+      const { data, error } = await supabase.rpc("get_class_report_cards_stats", {
+        p_class_id: classId,
+        p_period_id: periodId,
+      });
+
+      if (error) throw error;
+      return data as any[];
+    },
+    enabled: !!classId && !!periodId && classId !== 'all' && periodId !== 'all',
+  }),
+
   // Bulk promote students
   bulkPromote: () => ({
     mutationFn: async (request: BulkPromotionRequest) => {

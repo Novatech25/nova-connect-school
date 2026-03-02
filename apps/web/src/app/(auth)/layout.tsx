@@ -48,63 +48,68 @@ const stats = [
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className={`relative min-h-screen bg-gradient-to-br from-white via-slate-50 to-sky-50 ${spaceGrotesk.className}`}>
-      <div className="pointer-events-none absolute -left-20 top-24 h-72 w-72 rounded-full bg-sky-200/50 blur-3xl" />
-      <div className="pointer-events-none absolute right-10 top-12 h-80 w-80 rounded-full bg-amber-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-12 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-slate-200/40 blur-3xl" />
+    <div className={`relative min-h-screen bg-slate-50 overflow-hidden ${spaceGrotesk.className}`}>
+      {/* Background Decorators - Same as Landing Page */}
+      <div className="pointer-events-none absolute -left-[10%] top-[-10%] h-[800px] w-[800px] rounded-full bg-gradient-to-br from-blue-300/40 to-indigo-300/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-[5%] top-[20%] h-[600px] w-[600px] rounded-full bg-gradient-to-bl from-emerald-200/40 to-teal-100/10 blur-3xl opacity-80" />
+      <div className="pointer-events-none absolute left-1/2 bottom-[-20%] h-[1000px] w-[1000px] -translate-x-1/2 rounded-full bg-slate-200/50 blur-3xl opacity-60" />
 
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid items-start gap-8 lg:grid-cols-[1.05fr,0.95fr]">
-          <section className="flex h-full flex-col justify-between gap-8 rounded-3xl border border-slate-200 bg-white/70 p-8 shadow-[0_25px_60px_-50px_rgba(15,23,42,0.35)]">
-            <div>
-              <Link href="/" className="inline-flex items-center gap-3 text-sm font-semibold text-slate-700">
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white">
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-12 sm:px-6 lg:px-8 min-h-screen pt-12 md:pt-20">
+        <div className="grid items-start gap-8 lg:grid-cols-[1.2fr,0.8fr]">
+          {/* Section Information (Gauche) */}
+          <section className="flex flex-col justify-center gap-10 rounded-[2.5rem] border border-slate-200/60 bg-white/40 p-10 shadow-2xl backdrop-blur-xl h-full min-h-[600px] relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/60 to-white/20 z-0" />
+            
+            <div className="relative z-10">
+              <Link href="/" className="inline-flex items-center gap-3 text-lg font-bold tracking-tight text-slate-900 group">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 group-hover:scale-105 transition-transform">
                   <LineChart className="h-6 w-6" aria-hidden="true" />
                 </span>
-                NovaConnectSchool
+                NovaConnect
               </Link>
 
-              <h1 className={`${fraunces.className} mt-6 text-3xl text-slate-900 sm:text-4xl`}>
-                Connectez votre equipe au coeur de l ecole.
+              <h1 className={`${fraunces.className} mt-10 text-4xl text-slate-900 sm:text-5xl leading-tight tracking-tight`}>
+                Connectez votre équipe au cœur de l'école.
               </h1>
-              <p className="mt-3 text-sm text-slate-600">
-                Une experience fluide pour garder le controle sur les operations,
-                la presence et les finances en un seul endroit.
+              <p className="mt-4 text-lg text-slate-600 max-w-lg leading-relaxed">
+                Une expérience fluide pour garder le contrôle sur les opérations,
+                la présence et les finances en un seul endroit stratégique.
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {highlights.map((item) => {
+            <div className="relative z-10 grid gap-4 sm:grid-cols-2 mt-4">
+              {highlights.map((item, i) => {
                 const Icon = item.icon;
                 return (
-                  <div key={item.title} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-                      <Icon className="h-5 w-5" aria-hidden="true" />
+                  <div key={item.title} className="rounded-2xl border border-slate-200/60 bg-white/70 backdrop-blur-sm p-5 shadow-sm transition-transform hover:-translate-y-1">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl mb-4 ${i === 0 ? 'bg-blue-100 text-blue-600' : i === 1 ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                      <Icon className="h-6 w-6" aria-hidden="true" />
                     </div>
-                    <p className="mt-3 text-sm font-semibold text-slate-900">{item.title}</p>
-                    <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+                    <p className="text-base font-bold text-slate-900">{item.title}</p>
+                    <p className="mt-1 text-sm text-slate-600 leading-relaxed">{item.description}</p>
                   </div>
                 );
               })}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="relative z-10 grid gap-3 sm:grid-cols-3 mt-4 border-t border-slate-200/60 pt-8">
               {stats.map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{stat.label}</p>
-                  <p className="mt-2 text-lg font-semibold text-slate-900">{stat.value}</p>
+                <div key={stat.label} className="text-center">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">{stat.label}</p>
+                  <p className={`${fraunces.className} text-3xl text-slate-900`}>{stat.value}</p>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-40px_rgba(15,23,42,0.4)] sm:p-8">
+          {/* Section Formulaire (Droite) */}
+          <section className="relative w-full max-w-lg mx-auto rounded-[2rem] border border-slate-200/80 bg-white p-10 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.1)] sm:p-14">
             {children}
           </section>
         </div>
 
-        <p className="text-center text-xs text-slate-500">
-          © 2025 NovaConnectSchool. Tous droits reserves.
+        <p className="text-center text-sm font-medium text-slate-500 mt-4">
+          © {new Date().getFullYear()} NovaConnect. Tous droits réservés.
         </p>
       </div>
     </div>

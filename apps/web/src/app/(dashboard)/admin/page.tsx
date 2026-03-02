@@ -194,20 +194,19 @@ export default function SchoolAdminDashboard() {
                 {greeting}, {displayName}
               </h1>
               <p className="mt-3 max-w-xl text-base text-slate-600">
-                Vue d'ensemble et pilotage pour {schoolName}. Centralisez les actions
-                critiques et gardez une vision claire des priorites.
+                Bienvenue sur votre espace de pilotage <span className="font-semibold text-slate-800">{schoolName}</span>. Supervision en temps reel, automatisation intelligente des processus et vision a 360° sur vos performances.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button asChild className="bg-slate-900 text-white hover:bg-slate-800">
-                <Link href="/admin/schedule">Planifier un EDT</Link>
+                <Link href="/admin/schedule">Gerer les plannings</Link>
               </Button>
               <Button
                 asChild
                 variant="outline"
                 className="border-slate-300 text-slate-700 hover:bg-slate-100"
               >
-                <Link href="/admin/exports">Voir les rapports</Link>
+                <Link href="/admin/exports">Analyser les donnees</Link>
               </Button>
             </div>
           </div>
@@ -221,25 +220,27 @@ export default function SchoolAdminDashboard() {
             </div>
             <div className="mt-6 space-y-4 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Etat des donnees</span>
-                <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">Stable</span>
+                <span className="text-slate-500">Sante du systeme</span>
+                <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">Optimale</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Flux exports</span>
-                <span className="text-slate-700">
+                <span className="text-slate-500">Rapports en file</span>
+                <span className="text-slate-700 font-medium">
                   <StatValue value={overview?.pendingExports ?? null} isLoading={isLoading} />{' '}
                   en attente
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Alertes presence</span>
-                <span className="text-slate-700">
+                <span className="text-slate-500">Anomalies presence</span>
+                <span className="text-slate-700 font-medium">
                   <StatValue value={overview?.attendanceConflicts ?? null} isLoading={isLoading} />
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Etat sync</span>
-                <span className="text-slate-700">OK</span>
+                <span className="text-slate-500">Services Cloud</span>
+                <span className="flex items-center gap-1.5 text-slate-700 font-medium">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> En Ligne
+                </span>
               </div>
             </div>
           </div>

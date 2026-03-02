@@ -174,17 +174,22 @@ export async function POST(req: NextRequest) {
         last_name: lastName,
         role: 'parent',
         school_code: school.code,
+        school_id: schoolId,
       },
       app_metadata: {
         role: 'parent',
         provider: 'email',
+        school_id: schoolId,
       },
     })
 
     if (createAuthError) {
       console.error('[API] Auth user creation failed:', createAuthError)
       return NextResponse.json(
-        { error: 'Failed to create auth user', details: createAuthError },
+        { 
+          error: createAuthError.message || 'Echec de la creation utilisateur (Auth)', 
+          details: createAuthError 
+        },
         { status: 500 }
       )
     }

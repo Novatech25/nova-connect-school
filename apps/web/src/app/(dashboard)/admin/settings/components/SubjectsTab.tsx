@@ -7,6 +7,7 @@ import {
   useUpdateSubject,
   useDeleteSubject,
   useLevels,
+  useSubjectCategories,
 } from '@novaconnect/data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,8 +21,10 @@ export function SubjectsTab({ schoolId }: { schoolId: string }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<any>(null);
 
-  const { data: subjects, isLoading } = useSubjects(schoolId);
+  const { data: subjects = [], isLoading } = useSubjects(schoolId);
   const { data: levels = [] } = useLevels(schoolId);
+  const { data: rawCategories } = useSubjectCategories(schoolId);
+  const categories = Array.isArray(rawCategories) ? rawCategories : [];
   const createMutation = useCreateSubject();
   const updateMutation = useUpdateSubject();
   const deleteMutation = useDeleteSubject();
@@ -36,6 +39,8 @@ export function SubjectsTab({ schoolId }: { schoolId: string }) {
         name: typeof data.name === 'string' ? data.name.trim() : data.name,
         code: normalizedCode,
         levelId: data.levelId || null,
+        categoryId: data.categoryId || null,
+        coefficient: data.coefficient || 1,
       };
 
       if (normalizedCode) {
@@ -143,6 +148,8 @@ export function SubjectsTab({ schoolId }: { schoolId: string }) {
               <TableHead>Nom</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Niveau</TableHead>
+              <TableHead>Unité d'Ens.</TableHead>
+              <TableHead>Crédits/Coef.</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Couleur</TableHead>
               <TableHead>Actions</TableHead>
@@ -158,6 +165,12 @@ export function SubjectsTab({ schoolId }: { schoolId: string }) {
                     levels.find((level: any) => level.id === subject.levelId)?.name ||
                     'Tous'}
                 </TableCell>
+                <TableCell>
+                  {subject.category?.name ||
+                    categories.find((cat: any) => cat.id === subject.categoryId)?.name ||
+                    '-'}
+                </TableCell>
+                <TableCell>{subject.coefficient ?? 1}</TableCell>
                 <TableCell>{subject.description || '-'}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -192,9 +205,10 @@ export function SubjectsTab({ schoolId }: { schoolId: string }) {
               defaultValues={editingSubject}
               schoolId={schoolId}
               levels={levels}
+              categories={categories}
               onSubmit={handleSubmit}
               isLoading={createMutation.isPending || updateMutation.isPending}
-              submitLabel={editingSubject ? 'Mettre ? jour' : 'Cr?er'}
+              submitLabel={editingSubject ? 'Mettre à jour' : 'Créer'}
             />
           </DialogContent>
         </Dialog>

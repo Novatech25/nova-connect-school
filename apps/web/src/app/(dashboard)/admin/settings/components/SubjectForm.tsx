@@ -21,8 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createSubjectSchema, type CreateSubjectSchema } from "@novaconnect/core/schemas";
+import { createSubjectSchema } from "@novaconnect/core/schemas";
+import { z } from "zod";
 import { Loader2 } from "lucide-react";
+
+type CreateSubjectSchema = z.infer<typeof createSubjectSchema>;
 
 const NO_LEVEL_VALUE = "__no_level__";
 
@@ -30,6 +33,7 @@ interface SubjectFormProps {
   defaultValues?: Partial<CreateSubjectSchema>;
   schoolId: string;
   levels?: any[];
+  categories?: any[];
   onSubmit: (data: CreateSubjectSchema) => Promise<void>;
   isLoading?: boolean;
   submitLabel?: string;
@@ -39,6 +43,7 @@ export function SubjectForm({
   defaultValues,
   schoolId,
   levels = [],
+  categories = [],
   onSubmit,
   isLoading = false,
   submitLabel = "Enregistrer",
@@ -50,10 +55,12 @@ export function SubjectForm({
       code: "",
       schoolId,
       levelId: null,
+      categoryId: null,
+      coefficient: 1,
       color: "#3B82F6",
       description: "",
       ...defaultValues,
-    },
+    } as any,
   });
 
   useEffect(() => {
@@ -63,6 +70,8 @@ export function SubjectForm({
       code: safeDefaults.code ?? "",
       schoolId,
       levelId: safeDefaults.levelId ?? null,
+      categoryId: safeDefaults.categoryId ?? null,
+      coefficient: safeDefaults.coefficient ?? 1,
       color: safeDefaults.color ?? "#3B82F6",
       description: safeDefaults.description ?? "",
     });
@@ -153,6 +162,84 @@ export function SubjectForm({
 
         <FormField
           control={form.control}
+          name="categoryId"
+          render={({ field }) => {
+            const value = field.value ?? "__no_category__";
+            return (
+              <FormItem>
+                <FormLabel>Unité d'Enseignement (optionnel)</FormLabel>
+                <Select
+                  value={value}
+                  onValueChange={(nextValue) =>
+                    field.onChange(nextValue === "__no_category__" ? null : nextValue)
+                  }
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner une UE" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="__no_category__">Aucune UE (Matière isolée)</SelectItem>
+                    {categories.map((cat: any) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="coefficient"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Coefficient / Crédits *</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={0.5}
+                    step={0.5}
+                    {...field}
+                    onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="color"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Couleur</FormLabel>
+                <div className="flex gap-2">
+                  <FormControl>
+                    <Input type="color" {...field} className="w-20 h-10" />
+                  </FormControl>
+                  <Input
+                    type="text"
+                    {...field}
+                    placeholder="#3B82F6"
+                    className="flex-1"
+                  />
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
           name="description"
           render={({ field }) => (
             <FormItem>
@@ -160,28 +247,6 @@ export function SubjectForm({
               <FormControl>
                 <Textarea placeholder="Description de la matière..." {...field} />
               </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="color"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Couleur</FormLabel>
-              <div className="flex gap-2">
-                <FormControl>
-                  <Input type="color" {...field} className="w-20 h-10" />
-                </FormControl>
-                <Input
-                  type="text"
-                  {...field}
-                  placeholder="#3B82F6"
-                  className="flex-1"
-                />
-              </div>
               <FormMessage />
             </FormItem>
           )}

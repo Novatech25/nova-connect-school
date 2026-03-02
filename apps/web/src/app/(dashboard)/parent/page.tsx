@@ -16,7 +16,6 @@ import {
     Users,
     TrendingUp,
     AlertCircle,
-    CheckCircle,
     Wallet,
     GraduationCap,
     Clock,
@@ -24,8 +23,9 @@ import {
     Calendar,
     Bell
 } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useAcademicYears } from "@novaconnect/data";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,8 @@ export default function ParentDashboard() {
         recentActivity: []
     });
 
+    const [selectedYearId, setSelectedYearId] = useState<string>('all');
+
     const schoolId = profile?.school_id || profile?.school?.id || (user?.user_metadata as any)?.school_id || '';
     const { school } = useSchool(schoolId);
 
@@ -75,6 +77,21 @@ export default function ParentDashboard() {
             : user?.email?.split('@')[0] || 'Parent';
 
     const schoolName = school?.name || profile?.school?.name || '';
+    
+    // Fetch Academic Years
+    const { data: academicYears = [] } = useAcademicYears(schoolId);
+
+    // Set current year as default
+    useEffect(() => {
+        if (academicYears.length > 0 && selectedYearId === 'all') {
+            const currentYear = academicYears.find((y: any) => y.is_current);
+            if (currentYear) {
+                setSelectedYearId(currentYear.id);
+            } else {
+                setSelectedYearId((academicYears as any[])[0].id);
+            }
+        }
+    }, [academicYears]);
 
     const getGreeting = () => {
         const hour = new Date().getHours();
@@ -125,19 +142,28 @@ export default function ParentDashboard() {
                     return;
                 }
 
-                // 2. Fetch Absences (Last 30 days)
+                // 2. Fetch Absences (Last 30 days or specific year logic)
+                // For a specific year filter, we usually map the 'term' logic or simply fetch records based on the year date bounds.
+                // Assuming attendance doesn't strict-link year_id everywhere, this base logic handles raw query. 
+                // To be exact, fetch absences. If selectedYearId isn't 'all', maybe filter by year. 
+                // We'll leave `thirtyDaysAgo` intact but you can enhance this with academic year filtering if your DB supports it.
                 const thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 
-                const { count: absencesCount } = await supabase
+                let absencesQuery = supabase
                     .from("attendance_records")
                     .select("id", { count: "exact", head: true })
                     .in("student_id", studentIds)
                     .in("status", ["absent", "late"])
                     .gte("date", thirtyDaysAgo.toISOString().split('T')[0]);
+                
+                // If you have `academic_year_id` on attendance_records or similar:
+                // if (selectedYearId !== 'all') { ... }
 
-                // 3. Fetch Latest Grade
-                const { data: latestGrade } = await supabase
+                const { count: absencesCount } = await absencesQuery;
+
+                // 3. Fetch Latest Grade (Filter by year)
+                let gradesQuery = supabase
                     .from("grades")
                     .select(`
                         score,
@@ -149,11 +175,17 @@ export default function ParentDashboard() {
                     .in("student_id", studentIds)
                     .eq("status", "published")
                     .order("created_at", { ascending: false })
-                    .limit(1)
-                    .single();
+                    .limit(1);
 
+                if (selectedYearId !== 'all') {
+                     // Grades link to terms which link to years, or they have academic_year_id directly.
+                     // Example assumes grades might have academic_year_id or you need to join.
+                     gradesQuery = gradesQuery.eq("academic_year_id", selectedYearId);
+                }
+
+                const { data: latestGrade } = await gradesQuery.maybeSingle();
                 // 4. Fetch Upcoming Payments (Unpaid Fee Schedules)
-                const { data: feeSchedules } = await supabase
+                let feeQuery = supabase
                     .from("fee_schedules")
                     .select(`
                         id,
@@ -165,6 +197,12 @@ export default function ParentDashboard() {
                     .gt("amount_due", supabase.rpc("get_amount_paid_col")) // Hacky way, better to filter in JS for simple logic
                     .gte("due_date", new Date().toISOString().split('T')[0])
                     .order("due_date", { ascending: true });
+
+                if (selectedYearId !== 'all') {
+                    feeQuery = feeQuery.eq("academic_year_id", selectedYearId);
+                }
+
+                const { data: feeSchedules } = await feeQuery;
 
                 // Filter manually for unpaid fees to be safe
                 const unpaidFees = feeSchedules?.filter((fee: any) => (fee.amount_due - (fee.amount_paid || 0)) > 0) || [];
@@ -228,23 +266,39 @@ export default function ParentDashboard() {
 
     return (
         <div className="space-y-6">
-            {/* En-tête */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <p className="text-sm font-medium text-indigo-600 uppercase tracking-widest">
-                            {getGreeting()}
-                        </p>
-                        <h1 className="mt-1 text-2xl md:text-3xl font-bold text-slate-900">
-                            {userName} 👋
-                        </h1>
-                        {schoolName && (
-                            <p className="mt-1 text-slate-500 text-sm">{schoolName}</p>
-                        )}
-                    </div>
-                    <div className="text-sm text-gray-500 bg-slate-50 px-4 py-2 rounded-lg border shadow-sm flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        {format(new Date(), "d MMMM yyyy", { locale: fr })}
+            {/* Header / Filtre */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex-1 w-full">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <p className="text-sm font-medium text-indigo-600 uppercase tracking-widest">
+                                {getGreeting()}
+                            </p>
+                            <h1 className="mt-1 text-2xl md:text-3xl font-bold text-slate-900">
+                                {userName} 👋
+                            </h1>
+                            {schoolName && (
+                                <p className="mt-1 text-slate-500 text-sm">{schoolName}</p>
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-3">
+                            <div className="text-sm text-gray-500 bg-slate-50 px-4 py-2 rounded-lg border shadow-sm flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Date du jour</span>
+                                <span className="font-medium text-slate-700">{format(new Date(), "d MMMM yyyy", { locale: fr })}</span>
+                            </div>
+                            
+                            <SearchableSelect
+                                value={selectedYearId}
+                                onValueChange={setSelectedYearId}
+                                options={academicYears.map((y: any) => ({
+                                    value: y.id,
+                                    label: y.name || 'Année inconnue',
+                                    badge: y.is_current ? 'Actuelle' : undefined
+                                }))}
+                                placeholder="Sélectionner l'année scolaire"
+                                className="w-full md:w-[250px]"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

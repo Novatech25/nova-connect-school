@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FileText,
@@ -17,9 +17,10 @@ import {
   AlertCircle,
   CheckCircle,
   Lock,
-  X,
   Info,
+  RefreshCw,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,10 +39,20 @@ import {
   useStudentDocumentDownload,
   useCurrentStudent,
   useEnsureCurrentStudent,
+  useGrades,
+  useReportCards,
+  usePeriods,
+  useSchool,
+  useSchoolSettings,
 } from '@novaconnect/data';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { StudentDocumentUploadDialog } from '@/components/documents/StudentDocumentUploadDialog';
+import { generateTranscriptPdf } from '@/lib/pdf/transcriptPdf';
+import { generateReportCardPdf } from '@/lib/pdf/reportCardPdf';
+import { generateEnrollmentCertificatePdf } from '@/lib/pdf/enrollmentCertificatePdf';
+import { generateProceedingsPdf } from '@/lib/pdf/proceedingsPdf';
+import { getStudentFeeSchedulesSecure, getStudentPaymentsSecure, getStudentProfileSecure, getAcademicYearsSecure } from "@/actions/payment-actions";
 
 export default function StudentDocumentsPage() {
   const router = useRouter();
@@ -54,15 +65,242 @@ export default function StudentDocumentsPage() {
 
   // Get the student ID and school ID from current student or profile
   const studentId = currentStudent?.id || profile?.studentId || profile?.student?.id;
-  const schoolId = currentStudent?.schoolId || profile?.schoolId || profile?.school?.id || user?.schoolId;
+  const schoolId = currentStudent?.school_id || profile?.schoolId || profile?.school?.id || (user as any)?.schoolId;
 
   // Filters
   const [selectedType, setSelectedType] = useState<string>('all');
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Advanced Academic & Financial States
+  const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
+  const [studentProfile, setStudentProfile] = useState<any>(null);
+  const [feeSchedules, setFeeSchedules] = useState<any[]>([]);
+  const [paymentsList, setPaymentsList] = useState<any[]>([]);
+  const [isFinanciallyUpToDate, setIsFinanciallyUpToDate] = useState<boolean>(true);
+  const [totalPaidAmount, setTotalPaidAmount] = useState<number>(0);
+  const [totalPastDueAmount, setTotalPastDueAmount] = useState<number>(0);
+  const [isFinancialsLoading, setIsFinancialsLoading] = useState<boolean>(true);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>('');
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>('');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+
+  useEffect(() => {
+    const loadFinancialsAndProfile = async () => {
+      if (!user?.id) return;
+      setIsFinancialsLoading(true);
+      try {
+        const { data: stdProfile } = await getStudentProfileSecure(user.id);
+        if (stdProfile) {
+          setStudentProfile(stdProfile);
+          if (stdProfile.school_id) {
+            const { data: years } = await getAcademicYearsSecure(stdProfile.school_id);
+            if (years) {
+               setAcademicYearsList(years);
+               const current = years.find((y: any) => y.current || y.is_current || y.isCurrent);
+               if (current) setSelectedAcademicYearId(current.id);
+               else if (years.length > 0) setSelectedAcademicYearId(years[0].id);
+            }
+          }
+
+          // Fetch fees & payments
+          const [feesRes, paymentsRes] = await Promise.all([
+            getStudentFeeSchedulesSecure(stdProfile.id, undefined),
+            getStudentPaymentsSecure(stdProfile.id)
+          ]);
+          
+          const loadedFees = feesRes.data || [];
+          const loadedPayments = paymentsRes.data || [];
+          
+          setFeeSchedules(loadedFees);
+          setPaymentsList(loadedPayments);
+
+          // Calculate if up to date
+          const totalPaid = loadedPayments.reduce((acc: number, p: any) => acc + (p.amount || 0), 0);
+          
+          // Only sum fees that are PAST due date
+          const now = new Date();
+          const pastDueFees = loadedFees.filter((f: any) => new Date(f.due_date) <= now);
+          const totalPastDue = pastDueFees.reduce((acc: number, f: any) => acc + (f.amount || 0), 0);
+
+          setTotalPaidAmount(totalPaid);
+          setTotalPastDueAmount(totalPastDue);
+          setIsFinanciallyUpToDate(totalPaid >= totalPastDue);
+        }
+      } catch (err) {
+        console.error("Erreur chargement paiements", err);
+      } finally {
+        setIsFinancialsLoading(false);
+      }
+    };
+    loadFinancialsAndProfile();
+  }, [user?.id]);
+
   // Fetch student documents
-  const { data: documents = [], isLoading, refetch } = useStudentDocuments(studentId || '');
+  const { data: documents = [], isLoading } = useStudentDocuments(studentId || '');
+  
+  // Fetch academic data for PDFs
+  const effectiveSchoolId = schoolId || studentProfile?.school_id;
+  const effectiveStudentId = studentId || studentProfile?.id;
+  
+  const { school: schoolInfo } = useSchool(effectiveSchoolId || '');
+  const { data: schoolSettings } = useSchoolSettings(effectiveSchoolId || '');
+
+  // Logique du blocage lié aux paramètres d'école
+  const paymentBlocking = schoolSettings?.paymentBlocking || {
+    mode: 'BLOCKED',
+    blockBulletins: true,
+    blockCertificates: true,
+    blockStudentCards: false,
+    blockExamAuthorizations: true,
+    warningThresholdPercent: 50,
+  };
+
+  const hasArrears = totalPaidAmount < totalPastDueAmount;
+  const paymentProgress = totalPastDueAmount > 0 ? (totalPaidAmount / totalPastDueAmount) * 100 : 100;
+
+  let isBlockedGlobal = false;
+  let showPaymentWarning = false;
+
+  if (hasArrears && paymentBlocking.mode !== 'OK') {
+    if (paymentBlocking.mode === 'BLOCKED') {
+      isBlockedGlobal = true;
+    } else if (paymentBlocking.mode === 'WARNING') {
+      if (paymentProgress < (paymentBlocking.warningThresholdPercent || 0)) {
+        showPaymentWarning = true;
+      }
+    }
+  }
+
+  const blockBulletins = isBlockedGlobal && paymentBlocking.blockBulletins;
+  const blockCertificates = isBlockedGlobal && paymentBlocking.blockCertificates;
+  
+  const { data: periodsData = [] } = usePeriods(effectiveSchoolId || '', selectedAcademicYearId || undefined);
+  const { data: publishedGrades = [] } = useGrades(effectiveSchoolId || '', {
+    studentId: effectiveStudentId,
+    status: 'published',
+  });
+  const { data: reportCards = [] } = useReportCards(effectiveSchoolId || '', {
+    studentId: effectiveStudentId,
+    academicYearId: selectedAcademicYearId || undefined,
+  });
+
+  const handleGenerateTranscript = async () => {
+    if (!selectedPeriodId) {
+      toast({ title: 'Erreur', description: 'Veuillez sélectionner une période.', variant: 'destructive' });
+      return;
+    }
+    const period = periodsData.find((p: any) => p.id === selectedPeriodId);
+    if (!period) return;
+    const academicYear = academicYearsList.find(y => y.id === selectedAcademicYearId);
+
+    const gradesForPeriod = publishedGrades.filter((g: any) => g.period?.id === selectedPeriodId);
+    if (gradesForPeriod.length === 0) {
+      toast({ title: 'Avis', description: 'Aucune note publiée disponible pour cette période.' });
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    try {
+       await generateTranscriptPdf({
+         student: studentProfile,
+         school: schoolInfo || studentProfile?.school || profile?.school,
+         grades: gradesForPeriod,
+         period,
+         academicYear
+       });
+       toast({ title: 'Succès', description: 'Le relevé de notes a été téléchargé !' });
+    } catch (e) {
+       toast({ title: 'Erreur', description: 'Echec de génération PDF.', variant: 'destructive' });
+    } finally {
+       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleGenerateReportCard = async () => {
+    if (!selectedPeriodId) {
+       toast({ title: 'Erreur', description: 'Veuillez sélectionner une période.', variant: 'destructive' });
+       return;
+    }
+    const period = periodsData.find((p: any) => p.id === selectedPeriodId);
+    const academicYear = academicYearsList.find(y => y.id === selectedAcademicYearId);
+
+    const rc = reportCards.find((r: any) => r.periodId === selectedPeriodId && (r.status === 'published' || r.status === 'generated'));
+    if (!rc) {
+       toast({ title: 'Avis', description: 'Aucun bulletin provisoire ou final disponible pour cette période.' });
+       return;
+    }
+    if (rc.paymentStatus === 'blocked' && !rc.paymentStatusOverride && !isFinanciallyUpToDate) {
+       toast({ title: 'Bloqué', description: 'L\'accès à ce bulletin est bloqué en raison du paiement.', variant: 'destructive' });
+       return;
+    }
+
+    setIsGeneratingPdf(true);
+    try {
+       await generateReportCardPdf({
+         student: studentProfile,
+         school: schoolInfo || studentProfile?.school || profile?.school,
+         reportCard: rc,
+         period,
+         academicYear
+       });
+       toast({ title: 'Succès', description: 'Le bulletin a été téléchargé !' });
+    } catch (e) {
+       toast({ title: 'Erreur', description: 'Echec de génération PDF.', variant: 'destructive' });
+    } finally {
+       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleGenerateCertificate = async () => {
+    const academicYear = academicYearsList.find(y => y.id === selectedAcademicYearId);
+    if (!academicYear) {
+      toast({ title: 'Erreur', description: 'Veuillez sélectionner une année académique.', variant: 'destructive' });
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    try {
+       await generateEnrollmentCertificatePdf({
+         student: studentProfile,
+         school: schoolInfo || studentProfile?.school || profile?.school,
+         academicYear,
+         enrollment: studentProfile?.enrollments?.[0]
+       });
+       toast({ title: 'Succès', description: 'Le certificat a été téléchargé !' });
+    } catch (e) {
+       toast({ title: 'Erreur', description: 'Echec de génération PDF.', variant: 'destructive' });
+    } finally {
+       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleGenerateProceedings = async () => {
+    const academicYear = academicYearsList.find(y => y.id === selectedAcademicYearId);
+    if (!academicYear) {
+      toast({ title: 'Erreur', description: 'Veuillez sélectionner une année académique.', variant: 'destructive' });
+      return;
+    }
+
+    // Pass all report cards for the selected year
+    const yearlyCards = reportCards.filter((rc: any) => rc.academicYearId === selectedAcademicYearId && (rc.status === 'published' || rc.status === 'generated'));
+
+    setIsGeneratingPdf(true);
+    try {
+       await generateProceedingsPdf({
+         student: studentProfile,
+         school: schoolInfo || studentProfile?.school || profile?.school,
+         academicYear,
+         enrollment: studentProfile?.enrollments?.[0],
+         allReportCards: yearlyCards
+       });
+       toast({ title: 'Succès', description: 'Le Procès Verbal a été téléchargé !' });
+    } catch (e) {
+       toast({ title: 'Erreur', description: 'Echec de génération PDF.', variant: 'destructive' });
+    } finally {
+       setIsGeneratingPdf(false);
+    }
+  };
 
   // Download mutation
   const downloadMutation = useStudentDocumentDownload();
@@ -378,7 +616,7 @@ export default function StudentDocumentsPage() {
           <CardHeader className="flex flex-row items-center justify-between px-3 sm:px-6 pt-3 sm:pt-6 pb-2 sm:pb-4">
             <CardTitle className="text-sm sm:text-base flex items-center gap-2">
               <Filter className="h-4 w-4" />
-              Filtres
+              Filtres (Documents importés)
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
@@ -395,6 +633,95 @@ export default function StudentDocumentsPage() {
                   allLabel="Tous les types"
                 />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Academic Documents Generation Area */}
+        <Card className="mb-4 sm:mb-6 border-blue-200 bg-blue-50/50 shadow-sm">
+           <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6 pb-2 sm:pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm sm:text-base flex items-center gap-2 text-blue-800">
+                <GraduationCap className="h-5 w-5" />
+                Dossier Périodique Numérique (Génération PDF)
+              </CardTitle>
+              {!isFinancialsLoading && (isBlockedGlobal || showPaymentWarning) && (
+                 <Badge variant={isBlockedGlobal ? "destructive" : "secondary"} className={cn("flex items-center gap-1", !isBlockedGlobal && "bg-yellow-100 text-yellow-800 hover:bg-yellow-200")}>
+                   {isBlockedGlobal ? <Lock className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />} 
+                   {isBlockedGlobal ? "Bloqué: Arriérés" : "Avertissement: Arriérés"}
+                 </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-end mb-4">
+               <div className="space-y-1.5 sm:space-y-2">
+                 <label className="text-xs font-medium text-gray-700">Année Académique</label>
+                 <Select value={selectedAcademicYearId} onValueChange={setSelectedAcademicYearId}>
+                   <SelectTrigger className="bg-white">
+                     <SelectValue placeholder="Année académique" />
+                   </SelectTrigger>
+                   <SelectContent>
+                      {academicYearsList.map(y => (
+                        <SelectItem key={y.id} value={y.id}>{y.name}</SelectItem>
+                      ))}
+                   </SelectContent>
+                 </Select>
+               </div>
+               <div className="space-y-1.5 sm:space-y-2">
+                 <label className="text-xs font-medium text-gray-700">Période (Semestre/Trimestre)</label>
+                 <Select value={selectedPeriodId} onValueChange={setSelectedPeriodId}>
+                   <SelectTrigger className="bg-white">
+                     <SelectValue placeholder="Sélect. une période" />
+                   </SelectTrigger>
+                   <SelectContent>
+                      {periodsData.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                   </SelectContent>
+                 </Select>
+               </div>
+               
+               <Button 
+                onClick={handleGenerateTranscript}
+                disabled={blockBulletins || isGeneratingPdf || !selectedPeriodId} 
+                className={cn("bg-blue-600 hover:bg-blue-700", blockBulletins && 'opacity-50')}
+               >
+                 {isGeneratingPdf ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                 Relevé de Notes
+               </Button>
+               <Button 
+                onClick={handleGenerateReportCard}
+                disabled={blockBulletins || isGeneratingPdf || !selectedPeriodId} 
+                className={cn("bg-emerald-600 hover:bg-emerald-700", blockBulletins && 'opacity-50')}
+               >
+                 {isGeneratingPdf ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                 Bulletin Provisoire
+               </Button>
+            </div>
+
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-end mt-4 pt-4 border-t border-blue-200/50">
+               <div className="col-span-1 lg:col-span-2">
+                 <p className="text-xs text-blue-800/70 mb-2">Documents de fin d'année ou attestations (Basés sur l'année sélectionnée)</p>
+               </div>
+               <Button 
+                onClick={handleGenerateCertificate}
+                disabled={blockCertificates || isGeneratingPdf} 
+                variant="outline"
+                className={cn("border-blue-300 text-blue-700 bg-white hover:bg-blue-50", blockCertificates && 'opacity-50')}
+               >
+                 {isGeneratingPdf ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                 Certificat de scolarité
+               </Button>
+               <Button 
+                onClick={handleGenerateProceedings}
+                disabled={blockCertificates || isGeneratingPdf} 
+                variant="outline"
+                className={cn("border-purple-300 text-purple-700 bg-white hover:bg-purple-50", blockCertificates && 'opacity-50')}
+               >
+                 {isGeneratingPdf ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                 Procès Verbal (Annuel/Moyenne)
+               </Button>
             </div>
           </CardContent>
         </Card>

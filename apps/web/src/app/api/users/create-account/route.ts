@@ -114,7 +114,13 @@ export async function POST(req: NextRequest) {
             last_name: lastName,
             role: role,
             school_code: schoolData.code,
+            school_id: schoolId,
           },
+          app_metadata: {
+            role: role,
+            provider: 'email',
+            school_id: schoolId,
+          }
         });
         authData = result.data;
         createAuthError = result.error;
@@ -278,26 +284,26 @@ export async function POST(req: NextRequest) {
     if (role === 'student' && linkedStudentId) {
       const { error: studentUpdateError } = await adminSupabase
         .from('students')
-        .update({ user_id: authUser!.id })
+        .update({ user_id: authUser!.id, email: email })
         .eq('id', linkedStudentId);
 
       if (studentUpdateError) {
         console.error('⚠️ Student update failed:', studentUpdateError);
       } else {
-        console.log('✅ Student linked to user account');
+        console.log('✅ Student linked to user account and email updated');
       }
     }
 
     if (role === 'parent' && linkedParentId) {
       const { error: parentUpdateError } = await adminSupabase
         .from('parents')
-        .update({ user_id: authUser!.id })
+        .update({ user_id: authUser!.id, email: email })
         .eq('id', linkedParentId);
 
       if (parentUpdateError) {
         console.error('⚠️ Parent update failed:', parentUpdateError);
       } else {
-        console.log('✅ Parent linked to user account');
+        console.log('✅ Parent linked to user account and email updated');
       }
     }
 

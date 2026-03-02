@@ -3,9 +3,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { useAuthContext } from '@novaconnect/data/providers';
+import { SchoolInfoTab } from './components/SchoolInfoTab';
 import { AcademicYearsTab } from './components/AcademicYearsTab';
 import { LevelsTab } from './components/LevelsTab';
 import { ClassesTab } from './components/ClassesTab';
+import { SubjectCategoriesTab } from './components/SubjectCategoriesTab';
 import { SubjectsTab } from './components/SubjectsTab';
 import { PeriodsTab } from './components/PeriodsTab';
 import { GradingScalesTab } from './components/GradingScalesTab';
@@ -52,11 +54,13 @@ import { RoomAssignmentConfigTab } from './components/RoomAssignmentConfigTab';
         </p>
       </div>
 
-      <Tabs defaultValue="academic-years" className="space-y-4">
+      <Tabs defaultValue="general" className="space-y-4">
         <TabsList className="flex flex-wrap gap-2 w-full h-auto">
+          <TabsTrigger value="general">Général</TabsTrigger>
           <TabsTrigger value="academic-years">Années</TabsTrigger>
           <TabsTrigger value="levels">Niveaux</TabsTrigger>
           <TabsTrigger value="classes">Classes</TabsTrigger>
+          <TabsTrigger value="subject-categories">Unités d'Enseignement</TabsTrigger>
           <TabsTrigger value="subjects">Matières</TabsTrigger>
           <TabsTrigger value="periods">Périodes</TabsTrigger>
           <TabsTrigger value="grading">Barèmes</TabsTrigger>
@@ -72,6 +76,10 @@ import { RoomAssignmentConfigTab } from './components/RoomAssignmentConfigTab';
           <TabsTrigger value="canteen">Cantine</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="general">
+          <SchoolInfoTab schoolId={schoolId} />
+        </TabsContent>
+
         <TabsContent value="academic-years">
           <AcademicYearsTab schoolId={schoolId} />
         </TabsContent>
@@ -82,6 +90,10 @@ import { RoomAssignmentConfigTab } from './components/RoomAssignmentConfigTab';
 
         <TabsContent value="classes">
           <ClassesTab schoolId={schoolId} />
+        </TabsContent>
+
+        <TabsContent value="subject-categories">
+          <SubjectCategoriesTab schoolId={schoolId} />
         </TabsContent>
 
         <TabsContent value="subjects">

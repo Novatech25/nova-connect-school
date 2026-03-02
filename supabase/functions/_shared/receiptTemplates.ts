@@ -56,12 +56,12 @@ export const DEFAULT_CONFIGS: Record<string, PrinterConfig> = {
     type: 'A4_STANDARD',
     width: 210,
     height: 297,
-    marginTop: 15,
-    marginBottom: 15,
-    marginLeft: 20,
-    marginRight: 20,
-    fontSizeHeader: 18,
-    fontSizeBody: 11,
+    marginTop: 12,
+    marginBottom: 12,
+    marginLeft: 18,
+    marginRight: 18,
+    fontSizeHeader: 14,
+    fontSizeBody: 10,
     fontSizeFooter: 8,
     showLogo: true,
     showQR: true,
@@ -99,52 +99,36 @@ export const DEFAULT_CONFIGS: Record<string, PrinterConfig> = {
   },
 };
 
-// Couleurs professionnelles
+// Couleurs
 const COLORS = {
-  primary: [41, 98, 255],      // Bleu professionnel
-  primaryDark: [13, 71, 161],   // Bleu foncé
-  secondary: [76, 175, 80],     // Vert succès
-  accent: [255, 152, 0],        // Orange accent
-  dark: [33, 37, 41],           // Gris foncé texte
-  medium: [108, 117, 125],      // Gris moyen
-  light: [248, 249, 250],       // Gris très clair
+  primary: [41, 98, 255],
+  primaryDark: [13, 71, 161],
+  secondary: [76, 175, 80],
+  accent: [255, 152, 0],
+  dark: [33, 37, 41],
+  medium: [108, 117, 125],
+  light: [248, 249, 250],
   white: [255, 255, 255],
-  border: [222, 226, 230],      // Bordure grise
-  gold: [255, 193, 7],          // Or pour badge
+  border: [222, 226, 230],
+  gold: [255, 193, 7],
 };
 
-const numberFormatter = new Intl.NumberFormat('fr-FR');
-
-const normalizeSpacing = (value: string) => value.replace(/\u202F|\u00A0/g, ' ');
-
-const stripAmpersandArtifacts = (value: string) => {
-  const ampCount = (value.match(/&/g) || []).length;
-  if (ampCount === 0) return value;
-  const ampRatio = ampCount / Math.max(value.length, 1);
-  if (ampRatio > 0.2) {
-    return value.replace(/&(?=[A-Za-z0-9])/g, '');
-  }
-  return value;
-};
-
-const decodeHtmlEntities = (value: string) =>
-  value
-    .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+// Helpers
+const sanitizeText = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
-
-const sanitizeText = (value: string) => {
-  const decoded = decodeHtmlEntities(value);
-  const normalized = stripAmpersandArtifacts(normalizeSpacing(decoded));
-  return normalized.replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, '');
+    .replace(/&gt;/gi, '>')
+    .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '');
 };
 
-const safeText = (value?: string | number | null) => sanitizeText(String(value ?? ''));
+const safeText = (value?: any) => sanitizeText(value ?? '');
 
-const toNumber = (value?: number | string | null) => {
+const toNumber = (value?: any): number => {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
     const parsed = Number(value.replace(',', '.'));
@@ -153,29 +137,28 @@ const toNumber = (value?: number | string | null) => {
   return 0;
 };
 
-const formatAmount = (value?: number | string | null) =>
-  `${sanitizeText(numberFormatter.format(toNumber(value)))} FCFA`;
-
-const formatDate = (value?: Date | string | null) => {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return safeText(value);
-  return sanitizeText(date.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  }));
+const formatAmount = (value?: any): string => {
+  const num = toNumber(value);
+  const numStr = num.toFixed(0);
+  let formatted = '';
+  for (let i = 0; i < numStr.length; i++) {
+    if (i > 0 && (numStr.length - i) % 3 === 0) {
+      formatted += ' ';
+    }
+    formatted += numStr[i];
+  }
+  return `${formatted} FCFA`;
 };
 
-const formatDateLong = (value?: Date | string | null) => {
+const formatDateLong = (value?: any): string => {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return safeText(value);
-  return sanitizeText(date.toLocaleDateString('fr-FR', {
+  if (isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric'
-  }));
+  });
 };
 
 export function generateStudentPaymentReceipt(
@@ -186,7 +169,7 @@ export function generateStudentPaymentReceipt(
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: config.type === 'A4_STANDARD' ? 'a4' : [config.width, 200],
+    format: 'a4',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -195,353 +178,302 @@ export function generateStudentPaymentReceipt(
   const right = pageWidth - config.marginRight;
   const centerX = pageWidth / 2;
   const contentWidth = right - left;
-
   let yPos = config.marginTop;
 
-  // === EN-TÊTE PROFESSIONNEL AVEC DÉGRADÉ ===
-  const headerHeight = 45;
-  
-  // Fond dégradé bleu
-  doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-  doc.rect(left - 3, yPos - 6, contentWidth + 6, headerHeight, 'F');
-  
-  // Ligne dorée décorative en haut
-  doc.setFillColor(COLORS.gold[0], COLORS.gold[1], COLORS.gold[2]);
-  doc.rect(left - 3, yPos - 6, contentWidth + 6, 3, 'F');
+  // ── Couleurs identiques au rapport PDF ─────────────────────────────
+  const BLUE   = [30, 64, 175]  as [number, number, number]; // Bleu principal (rapport)
+  const ACCENT = [99, 145, 255] as [number, number, number]; // Liseré / logo
+  const GREEN  = [22, 163, 74]  as [number, number, number]; // Sections secondaires
+  const WHITE  = [255, 255, 255] as [number, number, number];
+  const DARK   = [33, 37, 41]   as [number, number, number];
+  const MEDIUM = [100, 116, 139] as [number, number, number];
+  const LIGHT  = [248, 249, 250] as [number, number, number];
+  const BORDER = [222, 226, 230] as [number, number, number];
 
-  // Nom de l'école en blanc et gras
-  doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
+  // === EN-TÊTE : même fond bleu que le rapport ===
+  const HEADER_H = 36;
+  doc.setFillColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.rect(0, 0, pageWidth, HEADER_H, 'F');
+  // Liseré bleu vif en bas (identique au rapport)
+  doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+  doc.rect(0, HEADER_H, pageWidth, 1.5, 'F');
+
+  const LOGO_MARGIN = 12;
+  let logoEndX = LOGO_MARGIN;
+
+  // Carré initiales (le logo n'est pas disponible côté Edge Function sans fetch async)
+  const schoolName = safeText(data.school?.name || 'Etablissement');
+  doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+  doc.roundedRect(LOGO_MARGIN, 7, 20, 20, 3, 3, 'F');
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeHeader + 4);
-  const schoolName = safeText(data.school.name || 'ECOLE').toUpperCase();
-  doc.text(schoolName, centerX, yPos + 12, { align: 'center' });
+  doc.setFontSize(13);
+  const ini = schoolName.charAt(0).toUpperCase();
+  doc.text(ini, LOGO_MARGIN + 10, 20, { align: 'center' });
+  logoEndX = LOGO_MARGIN + 24;
 
-  // Informations de contact
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(config.fontSizeBody - 1);
-  
-  const contactInfo = [];
-  if (data.school.address) contactInfo.push(safeText(data.school.address));
-  if (data.school.phone) contactInfo.push(`Tél: ${safeText(data.school.phone)}`);
-  if (data.school.email) contactInfo.push(`Email: ${safeText(data.school.email)}`);
-  
-  let contactY = yPos + 20;
-  contactInfo.forEach((info, idx) => {
-    if (idx < 3) {
-      doc.text(info, centerX, contactY, { align: 'center' });
-      contactY += 5;
-    }
-  });
-
-  yPos += headerHeight + 5;
-
-  // === BADGE "REÇU DE PAIEMENT" ===
-  const badgeWidth = 70;
-  const badgeHeight = 12;
-  const badgeX = centerX - badgeWidth / 2;
-  
-  // Fond du badge
-  doc.setFillColor(COLORS.gold[0], COLORS.gold[1], COLORS.gold[2]);
-  doc.roundedRect(badgeX, yPos, badgeWidth, badgeHeight, 2, 2, 'F');
-  
-  // Bordure du badge
-  doc.setDrawColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(badgeX, yPos, badgeWidth, badgeHeight, 2, 2, 'S');
-  
-  // Texte du badge
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  // Nom de l'école
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody + 1);
-  doc.text('REÇU DE PAIEMENT', centerX, yPos + 8, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text(schoolName.toUpperCase(), logoEndX, 14);
 
-  yPos += badgeHeight + 8;
-
-  // === INFORMATIONS DU REÇU (Numéro et Date) ===
-  const infoBoxHeight = 22;
-  doc.setFillColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
-  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-  doc.roundedRect(left, yPos, contentWidth, infoBoxHeight, 3, 3, 'FD');
-
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody);
-  
-  doc.text(`N° Reçu:`, left + 5, yPos + 8);
-  doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-  doc.text(safeText(data.receiptNumber), left + 30, yPos + 8);
-  
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.text(`Date:`, right - 60, yPos + 8);
-  doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-  doc.text(formatDateLong(data.date), right - 45, yPos + 8);
-
-  doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(config.fontSizeBody - 1);
-  doc.text(`Référence: ${safeText(data.paymentReference || 'N/A')}`, left + 5, yPos + 16);
-
-  yPos += infoBoxHeight + 10;
-
-  // === SECTION ÉLÈVE ===
-  const sectionTitle = (title: string, color: number[]) => {
-    doc.setFillColor(color[0], color[1], color[2]);
-    doc.setDrawColor(color[0], color[1], color[2]);
-    doc.roundedRect(left, yPos, contentWidth, 10, 2, 2, 'F');
-    doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(config.fontSizeBody);
-    doc.text(safeText(title).toUpperCase(), left + 5, yPos + 7);
-    yPos += 14;
-  };
-
-  sectionTitle('👤 Informations de l\'élève', COLORS.primary);
-
-  // Détails de l'élève en grille
-  const studentInfo = [
-    ['Nom complet:', `${data.student?.first_name || ''} ${data.student?.last_name || ''}`.trim()],
-    ['Matricule:', data.student?.matricule || 'N/A'],
-    ['Classe:', data.student?.class_name || 'N/A'],
-  ];
-
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.setFontSize(config.fontSizeBody);
-  
-  studentInfo.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(label), left + 5, yPos);
+  // Adresse
+  const addrParts = [data.school?.address, data.school?.city, data.school?.country].filter(Boolean).map(safeText);
+  if (addrParts.length > 0) {
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text(safeText(value), left + 45, yPos);
-    yPos += 7;
-  });
-
-  yPos += 5;
-
-  // === SECTION DÉTAILS DU PAIEMENT ===
-  sectionTitle('💳 Détails du paiement', COLORS.secondary);
-
-  const paymentDetails = [
-    ['Type de frais:', data.feeType?.name || 'N/A'],
-    ['Nature:', data.paymentNature || 'Paiement normal'],
-    ['Période couverte:', data.periodCoverage || 'N/A'],
-    ['Mode de paiement:', data.paymentMethod || 'N/A'],
-    ['Caissier:', data.cashier ? `${data.cashier.first_name} ${data.cashier.last_name}`.trim() : 'N/A'],
-  ];
-
-  paymentDetails.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(label), left + 5, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(safeText(value), left + 50, yPos);
-    yPos += 7;
-  });
-
-  yPos += 5;
-
-  // === TABLEAU DES MONTANTS ===
-  sectionTitle('💰 Détail des montants', COLORS.accent);
-
-  // En-têtes du tableau
-  const col1Width = 80;
-  const col2Width = contentWidth - col1Width - 10;
-  const rowHeight = 8;
-
-  doc.setFillColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
-  doc.rect(left + 5, yPos - 5, contentWidth - 10, rowHeight, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody);
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.text('Description', left + 8, yPos);
-  doc.text('Montant', left + col1Width + 10, yPos);
-  yPos += rowHeight;
-
-  // Lignes du tableau
-  const tableRows = [
-    ['Montant payé', formatAmount(data.amount)],
-    ['Remise accordée', data.discount || data.feeSchedule?.discount_amount ? formatAmount(data.discount || data.feeSchedule?.discount_amount) : '-'],
-    ['Arriérés', data.arrears ? formatAmount(data.arrears) : '-'],
-    ['Montant total dû', formatAmount(data.feeSchedule?.amount)],
-  ];
-
-  doc.setFont('helvetica', 'normal');
-  tableRows.forEach(([desc, amount], idx) => {
-    if (idx % 2 === 0) {
-      doc.setFillColor(250, 250, 250);
-      doc.rect(left + 5, yPos - 5, contentWidth - 10, rowHeight, 'F');
-    }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-    doc.text(safeText(desc), left + 8, yPos);
-    doc.setFont('helvetica', 'bold');
-    doc.text(safeText(amount), right - 8, yPos, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    yPos += rowHeight;
-  });
-
-  // Total payé
-  yPos += 3;
-  doc.setFillColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
-  doc.roundedRect(left + 5, yPos - 5, contentWidth - 10, rowHeight + 2, 2, 2, 'F');
-  doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(config.fontSizeBody + 1);
-  doc.text('TOTAL RÉGLÉ', left + 8, yPos + 1);
-  doc.text(formatAmount(data.amount), right - 8, yPos + 1, { align: 'right' });
-
-  yPos += rowHeight + 8;
-
-  // Reste à payer
-  const remaining = data.feeSchedule?.remaining_amount || 0;
-  if (remaining > 0) {
-    doc.setFillColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
-    doc.roundedRect(left + 5, yPos - 5, contentWidth - 10, rowHeight, 2, 2, 'F');
-    doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(config.fontSizeBody);
-    doc.text('RESTE À PAYER', left + 8, yPos);
-    doc.text(formatAmount(remaining), right - 8, yPos, { align: 'right' });
-    yPos += rowHeight + 5;
+    doc.setTextColor(180, 200, 240);
+    doc.text(addrParts.join(', '), logoEndX, 21);
   }
 
-  // Notes
-  if (data.paymentNotes || data.feeSchedule?.discount_reason) {
-    yPos += 3;
-    doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
+  // Contact (tél / email)
+  const contacts: string[] = [];
+  if (data.school?.phone) contacts.push(`Tel: ${safeText(data.school.phone)}`);
+  if (data.school?.email) contacts.push(`Email: ${safeText(data.school.email)}`);
+  if (contacts.length > 0) {
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(config.fontSizeBody - 1);
-    
-    if (data.feeSchedule?.discount_reason) {
-      const noteText = `Motif remise: ${safeText(data.feeSchedule.discount_reason)}`;
-      const noteLines = doc.splitTextToSize(noteText, contentWidth - 10);
-      doc.text(noteLines, left + 5, yPos);
-      yPos += noteLines.length * 5;
-    }
-    
-    if (data.paymentNotes) {
-      const noteLines = doc.splitTextToSize(safeText(`Notes: ${data.paymentNotes}`), contentWidth - 10);
-      doc.text(noteLines, left + 5, yPos);
-      yPos += noteLines.length * 5;
-    }
+    doc.setTextColor(160, 185, 230);
+    doc.text(contacts.join('   '), logoEndX, 28);
   }
 
-  yPos += 10;
+  // Titre REÇU à droite
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('RECU DE PAIEMENT', pageWidth - LOGO_MARGIN, 14, { align: 'right' });
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(200, 220, 255);
+  doc.text('NovaConnect - Gestion Scolaire', pageWidth - LOGO_MARGIN, 22, { align: 'right' });
 
-  // === SECTION SIGNATURES ===
-  if (config.showSignature) {
-    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-    doc.setLineWidth(0.3);
-    
-    const sigY = yPos;
-    const lineWidth = 60;
-    
-    // Signature caissier
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  yPos = HEADER_H + 8;
+
+  // === BADGE N° REÇU + DATE ===
+  doc.setFillColor(LIGHT[0], LIGHT[1], LIGHT[2]);
+  doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]);
+  doc.roundedRect(left, yPos, contentWidth, 18, 3, 3, 'FD');
+
+  doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('N Recu:', left + 5, yPos + 7);
+  doc.setTextColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.setFontSize(10);
+  doc.text(safeText(data.receiptNumber), left + 24, yPos + 7);
+
+  doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Date:', right - 65, yPos + 7);
+  doc.setTextColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.setFontSize(10);
+  doc.text(formatDateLong(data.date), right - 48, yPos + 7);
+
+  doc.setTextColor(MEDIUM[0], MEDIUM[1], MEDIUM[2]);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  const refText = data.paymentReference ? `Ref: ${safeText(data.paymentReference)}` : 'Ref: --';
+  doc.text(refText, left + 5, yPos + 14);
+
+  yPos += 24;
+
+  // === SECTIONS EN 2 COLONNES ===
+  const colWidth = (contentWidth - 6) / 2;
+  const col1X = left;
+  const col2X = left + colWidth + 6;
+  const startY = yPos;
+
+  // Colonne 1: ÉLÈVE
+  doc.setFillColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.roundedRect(col1X, yPos, colWidth, 8, 2, 2, 'F');
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('INFORMATIONS ELEVE', col1X + 4, yPos + 5.5);
+
+  yPos += 11;
+  doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+  doc.setFontSize(9);
+
+  const studentRows: [string, string][] = [
+    ['Nom:', `${data.student?.first_name || ''} ${data.student?.last_name || ''}`.trim() || '--'],
+    ['Matricule:', safeText(data.student?.matricule || 'N/A')],
+    ['Classe:', safeText(data.student?.class_name || 'N/A')],
+  ];
+  studentRows.forEach(([label, value]) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(safeText(label), col1X + 4, yPos);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(config.fontSizeBody - 1);
-    doc.text('Signature du caissier', left + 5, sigY);
-    doc.line(left + 5, sigY + 8, left + 5 + lineWidth, sigY + 8);
-    
-    // Signature parent
-    doc.text('Signature du parent / tuteur', right - lineWidth - 5, sigY, { align: 'left' });
-    doc.line(right - lineWidth - 5, sigY + 8, right - 5, sigY + 8);
-    
-    yPos = sigY + 20;
-  }
+    doc.text(safeText(value), col1X + 24, yPos);
+    yPos += 6.5;
+  });
 
-  // === SECTION QR CODE ET VÉRIFICATION ===
+  // Colonne 2: PAIEMENT
+  yPos = startY;
+  doc.setFillColor(GREEN[0], GREEN[1], GREEN[2]);
+  doc.roundedRect(col2X, yPos, colWidth, 8, 2, 2, 'F');
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('DETAILS PAIEMENT', col2X + 4, yPos + 5.5);
+
+  yPos += 11;
+  doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+  doc.setFontSize(9);
+
+  const paymentRows: [string, string | undefined][] = [
+    ['Type:', data.feeType?.name],
+    ['Mode:', safeText(data.paymentMethod)],
+    ['Caissier:', data.cashier ? `${data.cashier.first_name || ''} ${data.cashier.last_name || ''}`.trim() : undefined],
+  ];
+  paymentRows.forEach(([label, value]) => {
+    if (value) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(safeText(label), col2X + 4, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(safeText(value), col2X + 24, yPos);
+      yPos += 6.5;
+    }
+  });
+
+  yPos = Math.max(yPos, startY + 34) + 6;
+
+  // === TABLEAU MONTANTS ===
+  doc.setFillColor(255, 152, 0);
+  doc.roundedRect(left, yPos, contentWidth, 8, 2, 2, 'F');
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('DETAIL DES MONTANTS', left + 4, yPos + 5.5);
+
+  yPos += 11;
+
+  const colDesc = left + 4;
+  const colAmt  = right - 4;
+  const rowH = 6.5;
+
+  doc.setFillColor(240, 240, 240);
+  doc.rect(left + 1, yPos - 3.5, contentWidth - 2, rowH - 0.5, 'F');
+  doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Description', colDesc, yPos);
+  doc.text('Montant', colAmt, yPos, { align: 'right' });
+  yPos += rowH;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  const amountRows: [string, any][] = [
+    ['Montant paye', data.amount],
+    ['Montant total du', data.feeSchedule?.amount],
+    ['Deja paye (cumule)', data.feeSchedule?.paid_amount],
+    ['Remise accordee', data.feeSchedule?.discount_amount],
+    ['Reste a payer', data.feeSchedule?.remaining_amount],
+  ];
+  amountRows.forEach(([desc, amount], idx) => {
+    if (amount !== undefined && amount !== null) {
+      if (idx % 2 === 0) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(left + 1, yPos - 3.5, contentWidth - 2, rowH - 0.5, 'F');
+      }
+      doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+      doc.text(safeText(desc), colDesc, yPos);
+      doc.setFont('helvetica', 'bold');
+      doc.text(formatAmount(amount), colAmt, yPos, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      yPos += rowH;
+    }
+  });
+
+  // Ligne total bleue (identique au rapport)
+  yPos += 2;
+  doc.setFillColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.roundedRect(left + 1, yPos - 3.5, contentWidth - 2, rowH + 1, 2, 2, 'F');
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('TOTAL REGLE CETTE FOIS', colDesc, yPos + 0.5);
+  doc.text(formatAmount(data.amount), colAmt, yPos + 0.5, { align: 'right' });
+
+  yPos += rowH + 10;
+
+  // === QR ET SIGNATURES ===
   const drawQrMatrix = (modules: boolean[][], x: number, y: number, size: number) => {
     const count = modules.length;
     if (count === 0) return;
     const marginModules = 4;
     const totalModules = count + marginModules * 2;
     const cell = size / totalModules;
-    const qrSizeActual = cell * totalModules;
     doc.setFillColor(255, 255, 255);
-    doc.rect(x, y, qrSizeActual, qrSizeActual, 'F');
+    doc.rect(x, y, cell * totalModules, cell * totalModules, 'F');
     doc.setFillColor(0, 0, 0);
-    for (let row = 0; row < count; row += 1) {
-      for (let col = 0; col < count; col += 1) {
+    for (let row = 0; row < count; row++) {
+      for (let col = 0; col < count; col++) {
         if (modules[row][col]) {
-          doc.rect(
-            x + (col + marginModules) * cell,
-            y + (row + marginModules) * cell,
-            cell,
-            cell,
-            'F'
-          );
+          doc.rect(x + (col + marginModules) * cell, y + (row + marginModules) * cell, cell, cell, 'F');
         }
       }
     }
   };
 
   if (config.showQR && qrCode) {
-    const qrSize = 30;
-    const qrY = Math.min(yPos, pageHeight - config.marginBottom - qrSize - 20);
-    
-    // Cadre de vérification
-    doc.setFillColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
-    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-    doc.roundedRect(left, qrY - 5, contentWidth, qrSize + 15, 3, 3, 'FD');
-    
-    // QR Code
+    const qrSize = 25;
+    doc.setFillColor(LIGHT[0], LIGHT[1], LIGHT[2]);
+    doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]);
+    doc.roundedRect(left, yPos - 3, 88, qrSize + 9, 2, 2, 'FD');
+
     if (qrCode.dataUrl) {
-      doc.addImage(qrCode.dataUrl, 'PNG', left + 5, qrY, qrSize, qrSize);
+      doc.addImage(qrCode.dataUrl, 'PNG', left + 3, yPos, qrSize, qrSize);
     } else if (qrCode.modules) {
-      drawQrMatrix(qrCode.modules, left + 5, qrY, qrSize);
+      drawQrMatrix(qrCode.modules, left + 3, yPos, qrSize);
     }
-    
-    // Texte de vérification
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.setTextColor(DARK[0], DARK[1], DARK[2]);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(config.fontSizeBody);
-    doc.text('Vérification du reçu', left + qrSize + 10, qrY + 8);
-    
+    doc.setFontSize(8.5);
+    doc.text('Verifier authenticite', left + qrSize + 8, yPos + 7);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(config.fontSizeBody - 1);
-    doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
-    doc.text('Scannez ce QR code pour vérifier', left + qrSize + 10, qrY + 14);
-    doc.text('l\'authenticité de ce document', left + qrSize + 10, qrY + 19);
-    
-    if (data.verificationUrl) {
-      doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-      doc.setFontSize(config.fontSizeFooter);
-      const urlText = safeText(data.verificationUrl.substring(0, 50) + '...');
-      doc.text(urlText, left + qrSize + 10, qrY + 26);
-    }
+    doc.setFontSize(7.5);
+    doc.setTextColor(MEDIUM[0], MEDIUM[1], MEDIUM[2]);
+    doc.text('Scannez ce QR code', left + qrSize + 8, yPos + 13);
   }
 
-  // === PIED DE PAGE ===
-  const footerY = pageHeight - config.marginBottom + 5;
-  
-  // Ligne de séparation
-  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-  doc.setLineWidth(0.5);
-  doc.line(left, footerY - 5, right, footerY - 5);
-  
-  // Texte du footer
-  doc.setTextColor(COLORS.medium[0], COLORS.medium[1], COLORS.medium[2]);
+  // Signatures
+  if (config.showSignature) {
+    const sigX = right - 82;
+    doc.setTextColor(DARK[0], DARK[1], DARK[2]);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text('Signature caissier', sigX, yPos + 5);
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.line(sigX, yPos + 13, sigX + 36, yPos + 13);
+
+    doc.text('Signature parent / tuteur', sigX + 42, yPos + 5);
+    doc.line(sigX + 42, yPos + 13, sigX + 82, yPos + 13);
+  }
+
+  // === PIED DE PAGE : même bleu que le rapport ========================
+  doc.setFillColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
+  doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(config.fontSizeFooter);
-  doc.text('Reçu généré par NovaConnect School - Système de gestion scolaire', centerX, footerY, { align: 'center' });
-  doc.text(`Document électronique authentifié - N° ${safeText(data.receiptNumber)}`, centerX, footerY + 4, { align: 'center' });
-
-  // Watermark "ANNULE" si nécessaire
-  const statusValue = safeText(data.status || '').toLowerCase();
-  if (statusValue === 'cancelled' || statusValue === 'canceled' || statusValue === 'annule' || statusValue === 'annulée' || statusValue === 'annulee') {
-    doc.setTextColor(220, 220, 220);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(60);
-    doc.text('ANNULE', centerX, pageHeight / 2, { align: 'center', angle: 30 });
-  }
+  doc.setFontSize(7);
+  doc.text(
+    `Document electronique authentifie - N ${safeText(data.receiptNumber)} - NovaConnect Gestion Scolaire`,
+    centerX, pageHeight - 3, { align: 'center' }
+  );
 
   return new Uint8Array(doc.output('arraybuffer'));
 }
+
 
 export function generateTeacherSalaryReceipt(
   data: ReceiptData,
   config: PrinterConfig,
   qrCode?: QrCodePayload
 ): Uint8Array {
-  // Pour l'instant, utiliser la même fonction avec des ajustements
-  // ou créer une version améliorée similaire
   return generateStudentPaymentReceipt(data, config, qrCode);
 }

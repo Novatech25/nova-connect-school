@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
    * donc on appelle les 2 fenêtres à chaque run. Seuls les cours concernés
    * recevront des notifications (grâce aux champs t60_sent_at / t15_sent_at).
    */
-  const windows = [60, 15] as const
+  const windows = [1440, 60, 15] as const
 
   for (const window of windows) {
     try {

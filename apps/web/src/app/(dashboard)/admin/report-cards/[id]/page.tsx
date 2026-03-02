@@ -46,6 +46,7 @@ export default function ReportCardDetailPage() {
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('classic');
 
   const { data: reportCard, isLoading, refetch } = useReportCard(params.id as string);
   const { data: versions } = useReportCardVersions(params.id as string);
@@ -108,6 +109,7 @@ export default function ReportCardDetailPage() {
         studentId: reportCard.studentId,
         periodId: reportCard.periodId,
         regenerate: true, // Force la regeneration
+        templateId: selectedTemplate,
       });
       
       console.log('[Regenerate] Result:', result);
@@ -400,18 +402,33 @@ export default function ReportCardDetailPage() {
             </div>
           )}
           <div className="mt-3 space-y-2">
-            {subjectAverages.map((subject: any) => (
-              <div
-                key={subject.subjectId}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-violet-50/50 px-4 py-3 hover:from-indigo-50/70 hover:to-violet-50/70 transition-colors"
-              >
-                <span className="font-medium text-slate-800">{subject.subjectName}</span>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="text-indigo-600 font-medium">Coef {subject.coefficient}</span>
-                  <span className="font-semibold text-violet-700">{subject.average.toFixed(2)}/20</span>
+            {subjectAverages.map((subject: any) => {
+              const hasDetailedGrades = typeof subject.homeworkAverage === 'number' || typeof subject.examAverage === 'number';
+              return (
+                <div
+                  key={subject.subjectId}
+                  className="flex flex-col gap-2 rounded-md border border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-violet-50/50 px-4 py-3 hover:from-indigo-50/70 hover:to-violet-50/70 transition-colors"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="font-medium text-slate-800">{subject.subjectName}</span>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-indigo-600 font-medium whitespace-nowrap">Coef {subject.coefficient}</span>
+                      <span className="font-semibold text-violet-700 whitespace-nowrap">{subject.average?.toFixed(2) || '0.00'}/20</span>
+                    </div>
+                  </div>
+                  {hasDetailedGrades && (
+                    <div className="flex items-center justify-end gap-3 text-xs text-slate-500 mt-1 border-t border-indigo-50/50 pt-1">
+                      {typeof subject.homeworkAverage === 'number' && (
+                        <span>Devoirs: <span className="font-medium text-slate-700">{subject.homeworkAverage.toFixed(2)}</span></span>
+                      )}
+                      {typeof subject.examAverage === 'number' && (
+                        <span>Examen: <span className="font-medium text-slate-700">{subject.examAverage.toFixed(2)}</span></span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -504,6 +521,30 @@ export default function ReportCardDetailPage() {
             <AlertTriangle className="inline h-4 w-4 mr-1" />
             <strong>Attention:</strong> Si des notes ont ete modifiees depuis la derniere 
             generation, elles seront prises en compte dans le nouveau bulletin.
+          </div>
+
+          <div className="py-2">
+            <label className="text-sm font-medium text-slate-700 mb-2 block">
+              Choix de la couleur thématique
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { id: 'classic', name: 'Défaut', desc: 'Selon le niveau', bg: 'bg-slate-800' },
+                { id: 'blue', name: 'Bleu', bg: 'bg-blue-700' },
+                { id: 'green', name: 'Vert', bg: 'bg-emerald-600' },
+                { id: 'purple', name: 'Violet', bg: 'bg-purple-700' },
+                { id: 'red', name: 'Rouge', bg: 'bg-rose-700' },
+                { id: 'orange', name: 'Orange', bg: 'bg-orange-600' },
+              ].map(theme => (
+                <label key={theme.id} className={`border rounded-lg p-2 cursor-pointer flex flex-col gap-1 transition-all ${selectedTemplate === theme.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 hover:border-primary/50 bg-white'}`}>
+                  <div className="flex items-center gap-2">
+                    <input type="radio" className="sr-only" name="template_selection" value={theme.id} checked={selectedTemplate === theme.id} onChange={(e) => setSelectedTemplate(e.target.value)} />
+                    <div className={`w-4 h-4 rounded-full ${theme.bg} ${selectedTemplate === theme.id ? 'ring-2 ring-offset-2 ring-primary' : ''}`} />
+                    <span className="font-semibold text-slate-900 text-xs">{theme.name}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
 
           <DialogFooter>

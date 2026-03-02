@@ -33,6 +33,7 @@ export function GenerateDialog({ schoolId, academicYearId }: GenerateDialogProps
   const [open, setOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
+  const [selectedTemplate, setSelectedTemplate] = useState('classic');
   const { toast } = useToast();
 
   const resolvedSchoolId =
@@ -44,17 +45,20 @@ export function GenerateDialog({ schoolId, academicYearId }: GenerateDialogProps
     '';
   const resolvedAcademicYearId = academicYearId || user?.academicYearId || '';
 
-  const { data: students } = useStudents(resolvedSchoolId);
-  const { data: periods } = usePeriods(resolvedSchoolId, resolvedAcademicYearId);
-  const { data: existingReportCards } = useReportCards(resolvedSchoolId);
+  const { data: studentsRaw } = useStudents(resolvedSchoolId);
+  const students: any[] = (studentsRaw as any[]) || [];
+  const { data: periodsRaw } = usePeriods(resolvedSchoolId, resolvedAcademicYearId);
+  const periods: any[] = (periodsRaw as any[]) || [];
+  const { data: existingReportCardsRaw } = useReportCards(resolvedSchoolId);
+  const existingReportCards: any[] = (existingReportCardsRaw as any[]) || [];
   
   const generateReportCard = useGenerateReportCard();
 
   // Verifier si un bulletin existe deja pour cette combinaison
   const existingReportCard = useMemo(() => {
     if (!selectedStudent || !selectedPeriod) return null;
-    return existingReportCards?.find(
-      card => card.studentId === selectedStudent && card.periodId === selectedPeriod
+    return existingReportCards.find(
+      (card: any) => card.studentId === selectedStudent && card.periodId === selectedPeriod
     );
   }, [existingReportCards, selectedStudent, selectedPeriod]);
 
@@ -73,6 +77,7 @@ export function GenerateDialog({ schoolId, academicYearId }: GenerateDialogProps
         studentId: selectedStudent,
         periodId: selectedPeriod,
         regenerate: forceRegenerate,
+        templateId: selectedTemplate,
       });
 
       toast({
@@ -213,6 +218,31 @@ export function GenerateDialog({ schoolId, academicYearId }: GenerateDialogProps
               </AlertDescription>
             </Alert>
           )}
+          
+          {/* Section: Choix du template */}
+          <div className="py-2 border-t pt-4 mt-2">
+            <label className="text-sm font-medium text-slate-700 mb-2 block">
+              Choix de la couleur thématique
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { id: 'classic', name: 'Défaut', desc: 'Selon le niveau', bg: 'bg-slate-800' },
+                { id: 'blue', name: 'Bleu', bg: 'bg-blue-700' },
+                { id: 'green', name: 'Vert', bg: 'bg-emerald-600' },
+                { id: 'purple', name: 'Violet', bg: 'bg-purple-700' },
+                { id: 'red', name: 'Rouge', bg: 'bg-rose-700' },
+                { id: 'orange', name: 'Orange', bg: 'bg-orange-600' },
+              ].map(theme => (
+                <label key={theme.id} className={`border rounded-lg p-2 cursor-pointer flex flex-col gap-1 transition-all ${selectedTemplate === theme.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 hover:border-primary/50 bg-white'}`}>
+                  <div className="flex items-center gap-2">
+                    <input type="radio" className="sr-only" name="template_selection" value={theme.id} checked={selectedTemplate === theme.id} onChange={(e) => setSelectedTemplate(e.target.value)} />
+                    <div className={`w-4 h-4 rounded-full ${theme.bg} ${selectedTemplate === theme.id ? 'ring-2 ring-offset-2 ring-primary' : ''}`} />
+                    <span className="font-semibold text-slate-900 text-xs">{theme.name}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="gap-2">

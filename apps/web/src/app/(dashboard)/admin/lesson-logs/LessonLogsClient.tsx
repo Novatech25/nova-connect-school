@@ -8,6 +8,7 @@ import {
   useRejectLessonLog,
   useUsers,
   useAcademicYears,
+  useSchool,
 } from '@novaconnect/data';
 import { getSupabaseClient } from '@novaconnect/data/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,8 +26,11 @@ import {
   RotateCcw,
   Trash2,
   Coins,
+  Eye,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { downloadLessonLogsPdf } from './exportLessonLogsPdf';
 
 const statusLabels: Record<string, string> = {
   draft: 'Brouillon',
@@ -490,6 +494,104 @@ function EditHourlyRateModal({
   );
 }
 
+/* ----------------------------------------------- */
+/* Modal de Détails complets de la séance          */
+/* ----------------------------------------------- */
+function LessonLogDetailsModal({ log, onClose }: { log: any; onClose: () => void }) {
+  if (!log) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8 overflow-y-auto">
+      <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5 border-b pb-4">
+          <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+            <BookOpen className="h-6 w-6 text-blue-600" />
+            Détails du cahier de textes
+          </h2>
+          <button onClick={onClose} className="rounded-md p-2 text-gray-400 hover:bg-gray-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Info Générales */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Enseignant</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {log.teacher?.firstName || log.teacher?.first_name} {log.teacher?.lastName || log.teacher?.last_name}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Date & Durée</p>
+              <p className="text-sm font-semibold text-slate-900 flex items-center gap-1">
+                {formatDate(log.sessionDate || log.session_date)} <span className="text-gray-400">•</span> {formatDuration(log.durationMinutes || log.duration_minutes)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Classe</p>
+              <p className="text-sm font-semibold text-slate-900">{log.class?.name || '--'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Matière</p>
+              <p className="text-sm font-semibold text-slate-900">{log.subject?.name || '--'}</p>
+            </div>
+          </div>
+
+          {/* Contenu de la séance */}
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 mb-2 border-b pb-1">Thème / Titre</h3>
+            <p className="text-sm text-slate-700 bg-white border rounded-md p-3">
+              {log.theme || <span className="italic text-gray-400">Non renseigné</span>}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 mb-2 border-b pb-1">Contenu détaillé</h3>
+            <div className="text-sm text-slate-700 bg-white border rounded-md p-3 whitespace-pre-wrap min-h-[80px]">
+              {log.content || <span className="italic text-gray-400">Non renseigné</span>}
+            </div>
+          </div>
+
+          {log.homework && (
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 mb-2 border-b pb-1">Devoir donné</h3>
+              <p className="text-sm text-slate-700 bg-orange-50 border border-orange-100 rounded-md p-3">
+                {log.homework}
+              </p>
+            </div>
+          )}
+
+          {/* Statut & GPS (optionnel) */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase text-gray-500">Statut :</span>
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[log.status] || 'bg-gray-100 text-gray-700'}`}>
+                {statusLabels[log.status] || log.status}
+              </span>
+            </div>
+            {(log.latitude && log.longitude && log.latitude !== 0 && log.longitude !== 0) && (
+              <div className="text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full flex items-center gap-1">
+                <span>📍 Pointé par GPS</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-gray-100 px-5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------- */
 /* Composant principal             */
 /* ------------------------------- */
@@ -498,9 +600,11 @@ export default function LessonLogsClient() {
   const schoolId =
     profile?.school?.id ||
     profile?.school_id ||
-    (user?.user_metadata as any)?.school_id ||
-    (user?.user_metadata as any)?.schoolId ||
+    user?.schoolId ||
+    (user as any)?.school_id ||
     '';
+
+  const { school } = useSchool(schoolId);
 
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -511,6 +615,7 @@ export default function LessonLogsClient() {
   const [teacherFilter, setTeacherFilter] = useState<string>('all');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
 
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -519,6 +624,7 @@ export default function LessonLogsClient() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editRateLog, setEditRateLog] = useState<any | null>(null);
+  const [selectedLogDetails, setSelectedLogDetails] = useState<any | null>(null);
   const [isActionPending, setIsActionPending] = useState(false);
 
   const { data: logs = [], isLoading } = useLessonLogs(schoolId, {
@@ -663,6 +769,23 @@ export default function LessonLogsClient() {
       return teacherName.includes(q) || subjectName.includes(q) || clsName.includes(q);
     });
   }, [logs, searchQuery, yearFilter, teacherFilter, classFilter, subjectFilter]);
+
+  // Handlers pour les cases à cocher
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = filteredLogs.map((l: any) => l.id);
+      setSelectedLogIds(new Set(allIds));
+    } else {
+      setSelectedLogIds(new Set());
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    const newSet = new Set(selectedLogIds);
+    if (checked) newSet.add(id);
+    else newSet.delete(id);
+    setSelectedLogIds(newSet);
+  };
 
   // Réinitialiser les filtres dépendants si les parents changent
   useMemo(() => {
@@ -867,12 +990,40 @@ export default function LessonLogsClient() {
         </div>
       </div>
 
+      {/* Action / Export PDF pour la sélection */}
+      {selectedLogIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-lg bg-blue-50 border border-blue-200 p-3 shadow-sm">
+          <span className="text-sm font-medium text-blue-800">
+            {selectedLogIds.size} séance{selectedLogIds.size > 1 ? 's' : ''} sélectionnée{selectedLogIds.size > 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => {
+              const exportLogs = (logs as any[]).filter((l: any) => selectedLogIds.has(l.id));
+              // On passe l'objet school complet (inclut l'adresse et les contacts si configurés)
+              downloadLessonLogsPdf(exportLogs, school || profile?.school || { name: 'Établissement' });
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition"
+          >
+            <Download className="h-4 w-4" />
+            Télécharger le rapport PDF
+          </button>
+        </div>
+      )}
+
       {/* Tableau */}
       <div className="rounded-lg bg-white shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="w-12 px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={filteredLogs.length > 0 && selectedLogIds.size === filteredLogs.length}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Enseignant</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Classe / Matière</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date</th>
@@ -884,18 +1035,26 @@ export default function LessonLogsClient() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">Chargement...</td>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">Chargement...</td>
                 </tr>
               ) : filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
                     <BookOpen className="mx-auto h-8 w-8 text-gray-300 mb-2" />
                     Aucune séance trouvée.
                   </td>
                 </tr>
               ) : (
                 (filteredLogs as any[]).map((log: any) => (
-                  <tr key={log.id} className="hover:bg-slate-50">
+                  <tr key={log.id} className={`hover:bg-slate-50 ${selectedLogIds.has(log.id) ? 'bg-blue-50/40' : ''}`}>
+                    <td className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedLogIds.has(log.id)}
+                        onChange={(e) => handleSelectOne(log.id, e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       <div className="font-medium">
                         {log.teacher?.firstName || log.teacher?.first_name}{' '}
@@ -931,6 +1090,15 @@ export default function LessonLogsClient() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2 flex-wrap pb-1">
+                        <button
+                          onClick={() => setSelectedLogDetails(log)}
+                          title="Voir les détails complets"
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 bg-white"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> Détails
+                        </button>
+                      </div>
                       {/* Admin actions per status */}
                       {(log.status === 'pending_validation' || log.status === 'draft') && (
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1122,6 +1290,14 @@ export default function LessonLogsClient() {
           log={editRateLog}
           onClose={() => setEditRateLog(null)}
           onSuccess={() => toast.success('Le taux horaire a été mis à jour avec succès. Il sera appliqué au prochain calcul de paie.')}
+        />
+      )}
+
+      {/* Modal Détails du cahier de textes */}
+      {selectedLogDetails && (
+        <LessonLogDetailsModal
+          log={selectedLogDetails}
+          onClose={() => setSelectedLogDetails(null)}
         />
       )}
     </div>

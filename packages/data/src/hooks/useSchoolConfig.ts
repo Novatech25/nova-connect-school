@@ -8,6 +8,7 @@ import {
   gradingScaleQueries,
   roomQueries,
   teacherAssignmentQueries,
+  subjectCategoryQueries,
 } from "../queries/schoolConfig";
 import { campusQueries } from "../queries/multiCampus";
 
@@ -181,6 +182,44 @@ export function useDeleteSubject() {
     ...subjectQueries.delete(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
+    },
+  });
+}
+
+// ============================================
+// SUBJECT CATEGORIES (UE)
+// ============================================
+
+export function useSubjectCategories(schoolId: string) {
+  return useQuery(subjectCategoryQueries.getAll(schoolId));
+}
+
+export function useCreateSubjectCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...subjectCategoryQueries.create(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subject_categories"] });
+    },
+  });
+}
+
+export function useUpdateSubjectCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...subjectCategoryQueries.update(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subject_categories"] });
+    },
+  });
+}
+
+export function useDeleteSubjectCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...subjectCategoryQueries.delete(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subject_categories"] });
     },
   });
 }

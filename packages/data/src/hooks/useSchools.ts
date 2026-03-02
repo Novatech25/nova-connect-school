@@ -64,3 +64,16 @@ export function useSchoolByCode(code: string) {
     error: school.error,
   };
 }
+
+export function useUpdateSchool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...schoolQueries.update(),
+    onSuccess: (data: any, variables: any) => {
+      queryClient.invalidateQueries({ queryKey: ['schools'] });
+      if (variables.id) {
+        queryClient.invalidateQueries({ queryKey: ['schools', variables.id] });
+      }
+    },
+  });
+}

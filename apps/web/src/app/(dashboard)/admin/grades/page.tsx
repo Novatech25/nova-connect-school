@@ -9,6 +9,7 @@ import {
   usePublishGrade,
   useRejectGrade,
   useUpdateGrade,
+  useDeleteGrade,
   useStudents,
   useUsers,
   useTeachersFromGrades,
@@ -19,6 +20,7 @@ import {
   useLevels,
   useSubjects,
   usePeriods,
+  useSubjectCategories,
 } from '@novaconnect/data';
 // ... imports
 import { useToast } from '@/hooks/use-toast';
@@ -75,7 +77,9 @@ import {
   CheckCircle2,
   Ban,
   Loader2,
-  MoreHorizontal
+  MoreHorizontal,
+  Trash2,
+  Edit
 } from 'lucide-react';
 
 export default function AdminGradesPage() {
@@ -85,10 +89,12 @@ export default function AdminGradesPage() {
   const [selectedClassFilter, setSelectedClassFilter] = useState('all');
   const [selectedLevelFilter, setSelectedLevelFilter] = useState('all');
   const [selectedTeacherFilter, setSelectedTeacherFilter] = useState('all');
+  const [selectedPeriodFilter, setSelectedPeriodFilter] = useState('all');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>(''); // New State
   const [entryAcademicYearId, setEntryAcademicYearId] = useState<string>(''); // New State for Quick Entry
   const [studentSearch, setStudentSearch] = useState('');
   const [entryClassId, setEntryClassId] = useState('');
+  const [entryCategoryId, setEntryCategoryId] = useState('all');
   const [entrySubjectId, setEntrySubjectId] = useState('');
   const [entryPeriodId, setEntryPeriodId] = useState('');
   const [entryGradeType, setEntryGradeType] = useState('exam');
@@ -100,6 +106,14 @@ export default function AdminGradesPage() {
   const [selectedGrade, setSelectedGrade] = useState<any>(null);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editGradeForm, setEditGradeForm] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [gradeToDelete, setGradeToDelete] = useState<any>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   const schoolId =
     profile?.school?.id ||
@@ -147,6 +161,7 @@ export default function AdminGradesPage() {
 
   // ... mutations
   const updateGrade = useUpdateGrade();
+  const deleteGrade = useDeleteGrade();
   const submitGrade = useSubmitGrade();
   const approveGrade = useApproveGrade();
   const publishGrade = usePublishGrade();
@@ -185,16 +200,37 @@ export default function AdminGradesPage() {
       setSelectedClassFilter('all');
     }
   }, [filteredClasses, selectedClassFilter]);
+
+  const selectedLevel = useMemo(() => {
+    return levels.find((level: any) => level.id === selectedClass?.levelId);
+  }, [levels, selectedClass?.levelId]);
+
+  const isUniversity = selectedLevel?.levelType === 'university';
+
+  const { data: categories = [] } = useSubjectCategories(schoolId);
   const { data: allSubjects = [] } = useSubjects(schoolId);
+
   const subjects = useMemo(() => {
+    let result = allSubjects;
+    
+    // Filter by level if needed
     const levelId = selectedClass?.levelId;
-    if (!levelId) return allSubjects;
-    const hasLevelSpecific = allSubjects.some((subject: any) => subject.levelId);
-    if (!hasLevelSpecific) return allSubjects;
-    return allSubjects.filter(
-      (subject: any) => !subject.levelId || subject.levelId === levelId
-    );
-  }, [allSubjects, selectedClass?.levelId]);
+    if (levelId) {
+      const hasLevelSpecific = allSubjects.some((subject: any) => subject.levelId);
+      if (hasLevelSpecific) {
+        result = result.filter(
+          (subject: any) => !subject.levelId || subject.levelId === levelId
+        );
+      }
+    }
+
+    // Filter by UE category if university and category selected
+    if (isUniversity && entryCategoryId !== 'all') {
+      result = result.filter((subject: any) => subject.categoryId === entryCategoryId);
+    }
+
+    return result;
+  }, [allSubjects, selectedClass?.levelId, entryCategoryId, isUniversity]);
 
   const quickEntryClassId =
     entryClassId || (selectedClassFilter !== 'all' ? selectedClassFilter : '');
@@ -246,6 +282,16 @@ export default function AdminGradesPage() {
       setEntrySubjectId('');
     }
   }, [subjects, entrySubjectId]);
+
+  useEffect(() => {
+    if (!entrySubjectId || !isUniversity) return;
+    const selectedSubject = subjects.find((subject: any) => subject.id === entrySubjectId);
+    if (selectedSubject && selectedSubject.coefficient) {
+      setEntryCoefficient(selectedSubject.coefficient);
+    } else {
+      setEntryCoefficient(1);
+    }
+  }, [entrySubjectId, subjects, isUniversity]);
 
   useEffect(() => {
     if (studentIdsKey === prevStudentIdsKeyRef.current) {
@@ -436,45 +482,58 @@ export default function AdminGradesPage() {
       : []
   );
 
+
   const getGradeClassId = (grade: any) =>
     grade?.class?.id || grade?.classId || grade?.class_id || null;
 
   const filteredGrades = useMemo(() => {
-    let list = grades || [];
+    let result = (grades || []).filter((g: any) => g.status !== 'deleted');
 
+    if (selectedClassFilter && selectedClassFilter !== 'all') { // Renamed from activeClassFilter to selectedClassFilter
+      result = result.filter((g: any) => g.classId === selectedClassFilter);
+    }
+    if (selectedLevelFilter !== 'all') {
+      result = result.filter((g: any) => g.class?.levelId === selectedLevelFilter);
+    }
+    if (selectedTeacherFilter !== 'all') {
+      result = result.filter((g: any) => g.teacherId === selectedTeacherFilter);
+    }
+    if (selectedPeriodFilter !== 'all') {
+      result = result.filter((g: any) => g.periodId === selectedPeriodFilter);
+    }
     if (selectedStatus !== 'all') {
-      list = list.filter((g: any) => g.status === selectedStatus);
+      result = result.filter((g: any) => g.status === selectedStatus);
     }
-
-    if (selectedClassFilter && selectedClassFilter !== 'all') {
-      list = list.filter((g: any) => getGradeClassId(g) === selectedClassFilter);
-    }
-
-    if (selectedLevelFilter && selectedLevelFilter !== 'all') {
-      list = list.filter((g: any) => {
-        const classId = getGradeClassId(g);
-        return classId && levelClassIds.has(classId);
-      });
-    }
-
-    if (selectedTeacherFilter && selectedTeacherFilter !== 'all') {
-      list = list.filter((g: any) => g.teacherId === selectedTeacherFilter);
-    }
-
     if (normalizedStudentSearch) {
-      list = list.filter((g: any) => matchesStudentSearch(g.student));
+      result = result.filter((g: any) => matchesStudentSearch(g.student));
     }
 
-    return list;
+    return result.sort((a: any, b: any) => {
+      // Sort by created_at descending (newest first)
+      const dateA = new Date(a.createdAt || a.created_at || 0).getTime();
+      const dateB = new Date(b.createdAt || b.created_at || 0).getTime();
+      return dateB - dateA;
+    });
   }, [
     grades,
-    selectedStatus,
-    selectedClassFilter,
+    selectedClassFilter, // Renamed from activeClassFilter to selectedClassFilter
     selectedLevelFilter,
     selectedTeacherFilter,
-    levelClassIds,
+    selectedPeriodFilter,
+    selectedStatus,
     normalizedStudentSearch,
   ]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filteredGrades.length, selectedClassFilter, selectedLevelFilter, selectedTeacherFilter, selectedPeriodFilter, selectedStatus, studentSearch]);
+
+  const totalPages = Math.ceil(filteredGrades.length / itemsPerPage);
+  const paginatedGrades = filteredGrades.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const filteredStudentsForEntry = useMemo(() => {
     if (!normalizedStudentSearch) return visibleStudents;
@@ -569,7 +628,7 @@ export default function AdminGradesPage() {
           <CardTitle>Filtres</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-6">
             <div>
               <SearchableSelect
                 options={academicYears.map((y: any) => ({ value: y.id, label: y.name + (y.current ? ' (En cours)' : '') }))}
@@ -628,11 +687,21 @@ export default function AdminGradesPage() {
                 value={selectedTeacherFilter}
                 onValueChange={setSelectedTeacherFilter}
                 placeholder="Tous les enseignants"
-                searchPlaceholder="Rechercher un enseignant..."
+                searchPlaceholder="Rechercher un prof..."
                 allLabel="Tous les enseignants"
               />
             </div>
             <div>
+              <SearchableSelect
+                options={periods.map((p: any) => ({ value: p.id, label: p.name }))}
+                value={selectedPeriodFilter}
+                onValueChange={(v: any) => setSelectedPeriodFilter(v)}
+                placeholder="Période"
+                searchPlaceholder="Rechercher une période..."
+                allLabel="Toutes les périodes"
+              />
+            </div>
+            <div className="md:col-span-2">
               <Input
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
@@ -669,6 +738,11 @@ export default function AdminGradesPage() {
                       }
                       return '';
                     })()}
+                  </Badge>
+                )}
+                {selectedPeriodFilter !== 'all' && (
+                  <Badge variant="secondary">
+                    {periods.find((p: any) => p.id === selectedPeriodFilter)?.name || '--'}
                   </Badge>
                 )}
                 {normalizedStudentSearch && (
@@ -714,51 +788,56 @@ export default function AdminGradesPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className={`grid gap-4 ${isUniversity ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Classe</label>
-              <Select value={entryClassId} onValueChange={setEntryClassId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une classe" />
-                </SelectTrigger>
-                <SelectContent>
-                  {classesForEntry.map((cls: any) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={classesForEntry.map((cls: any) => ({ value: cls.id, label: cls.name }))}
+                value={entryClassId || 'all'}
+                onValueChange={(v) => setEntryClassId(v === 'all' ? '' : v)}
+                placeholder="Sélectionner une classe"
+                searchPlaceholder="Rechercher une classe..."
+                allLabel="Sélectionner une classe"
+              />
             </div>
+            {isUniversity && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Unité d'Ens. (UE)</label>
+                <SearchableSelect
+                  options={categories.map((cat: any) => ({ value: cat.id, label: cat.name }))}
+                  value={entryCategoryId}
+                  onValueChange={(v) => {
+                    setEntryCategoryId(v === 'all' ? 'all' : v);
+                    setEntrySubjectId(''); // Reset subject when UE changes
+                  }}
+                  placeholder="Toutes les UE"
+                  searchPlaceholder="Rechercher une UE..."
+                  allLabel="Toutes les UE"
+                />
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-muted-foreground">Matière</label>
-              <Select value={entrySubjectId} onValueChange={setEntrySubjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une matière" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map((subject: any) => (
-                    <SelectItem key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={subjects.map((subject: any) => ({ value: subject.id, label: subject.name }))}
+                value={entrySubjectId || 'all'}
+                onValueChange={(v) => setEntrySubjectId(v === 'all' ? '' : v)}
+                placeholder="Sélectionner une matière"
+                searchPlaceholder="Rechercher une matière..."
+                allLabel="Sélectionner une matière"
+                disabled={!entryClassId}
+              />
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Période</label>
-              <Select value={entryPeriodId} onValueChange={setEntryPeriodId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une période" />
-                </SelectTrigger>
-                <SelectContent>
-                  {periods.map((period: any) => (
-                    <SelectItem key={period.id} value={period.id}>
-                      {period.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={periods.map((period: any) => ({ value: period.id, label: period.name }))}
+                value={entryPeriodId || 'all'}
+                onValueChange={(v) => setEntryPeriodId(v === 'all' ? '' : v)}
+                placeholder="Sélectionner une période"
+                searchPlaceholder="Rechercher une période..."
+                allLabel="Sélectionner une période"
+              />
             </div>
           </div>
 
@@ -1020,14 +1099,14 @@ export default function AdminGradesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredGrades.length === 0 ? (
+              {paginatedGrades.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center text-muted-foreground">
                     Aucune note trouvée
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredGrades.map((grade: any) => (
+                paginatedGrades.map((grade: any) => (
                   <TableRow key={grade.id}>
                     <TableCell>
                       <div className="font-medium">
@@ -1074,6 +1153,16 @@ export default function AdminGradesPage() {
                           <DropdownMenuItem onClick={() => setSelectedGrade(grade)}>
                             <Eye className="mr-2 h-4 w-4" />
                             <span>Voir détails</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem onClick={() => { setEditGradeForm(grade); setShowEditDialog(true); }}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            <span>Modifier</span>
+                          </DropdownMenuItem>
+                          
+                          <DropdownMenuItem onClick={() => { setGradeToDelete(grade); setShowDeleteConfirm(true); }} className="text-red-600">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            <span>Supprimer</span>
                           </DropdownMenuItem>
 
                           <DropdownMenuSeparator />
@@ -1169,6 +1258,35 @@ export default function AdminGradesPage() {
               )}
             </TableBody>
           </Table>
+          
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between space-x-2 py-4">
+              <div className="text-sm text-muted-foreground">
+                Affichage de {(currentPage - 1) * itemsPerPage + 1} à {Math.min(currentPage * itemsPerPage, filteredGrades.length)} sur {filteredGrades.length} notes
+              </div>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Précédent
+                </Button>
+                <div className="flex items-center justify-center text-sm font-medium px-2">
+                  Page {currentPage} sur {totalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Suivant
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1243,6 +1361,96 @@ export default function AdminGradesPage() {
             </Button>
             <Button onClick={handleReject} disabled={!rejectionReason}>
               Rejeter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier la note</DialogTitle>
+            <DialogDescription>Modifiez les informations de la note</DialogDescription>
+          </DialogHeader>
+          {editGradeForm && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Note</label>
+                  <Input type="number" step="0.01" value={editGradeForm.score} onChange={(e) => setEditGradeForm({...editGradeForm, score: Number(e.target.value)})} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Note Max</label>
+                  <Input type="number" step="0.01" value={editGradeForm.maxScore} onChange={(e) => setEditGradeForm({...editGradeForm, maxScore: Number(e.target.value)})} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Coefficient</label>
+                  <Input type="number" step="0.1" value={editGradeForm.coefficient} onChange={(e) => setEditGradeForm({...editGradeForm, coefficient: Number(e.target.value)})} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Commentaire</label>
+                <Textarea value={editGradeForm.comments || ''} onChange={(e) => setEditGradeForm({...editGradeForm, comments: e.target.value})} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Annuler
+            </Button>
+            <Button 
+              onClick={async () => {
+                try {
+                  await updateGrade.mutateAsync({
+                    id: editGradeForm.id,
+                    score: editGradeForm.score,
+                    maxScore: editGradeForm.maxScore,
+                    coefficient: editGradeForm.coefficient,
+                    comments: editGradeForm.comments
+                  });
+                  toast({ title: 'Succès', description: 'La note a été modifiée.' });
+                  setShowEditDialog(false);
+                } catch(e) {
+                  toast({ title: 'Erreur', description: 'Erreur lors de la modification', variant: 'destructive' });
+                }
+              }} 
+              disabled={updateGrade.isPending}
+            >
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer la note</DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette note ? Cette action est irréversible.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+              Annuler
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={async () => {
+                if(!gradeToDelete) return;
+                try {
+                  await deleteGrade.mutateAsync(gradeToDelete.id);
+                  toast({ title: 'Succès', description: 'La note a été supprimée.' });
+                  setShowDeleteConfirm(false);
+                } catch(e) {
+                  toast({ title: 'Erreur', description: 'Erreur lors de la suppression', variant: 'destructive' });
+                }
+              }} 
+              disabled={deleteGrade.isPending}
+            >
+              Supprimer
             </Button>
           </DialogFooter>
         </DialogContent>

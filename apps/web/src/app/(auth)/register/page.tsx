@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { registerSchema } from '@novaconnect/core';
 import { useAuthContext } from '@novaconnect/data';
 import { Button, Input } from '@novaconnect/ui/web';
+import { Loader2 } from 'lucide-react';
 import type { z } from 'zod';
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -78,7 +79,7 @@ export default function RegisterPage() {
           </p>
         </div>
 
-        <Button type="button" fullWidth onClick={() => router.push('/login')} className="bg-slate-900 text-white hover:bg-slate-800">
+        <Button type="button" fullWidth onClick={() => router.push('/login')} className="h-11 bg-blue-600 text-base font-medium text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-blue-700">
           Aller a la connexion
         </Button>
 
@@ -96,10 +97,10 @@ export default function RegisterPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Inscription</p>
-        <h2 className="mt-3 text-3xl font-semibold text-slate-900">Creer un compte</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Rejoindre NovaConnect</p>
+        <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">Créer un compte</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Rejoignez votre etablissement avec vos informations.
+          Inscrivez-vous pour rejoindre votre établissement scolaire.
         </p>
       </div>
 
@@ -111,12 +112,12 @@ export default function RegisterPage() {
       )}
 
       <form className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="firstName" className="block text-sm font-medium text-slate-700">
+        <div className="grid gap-4 sm:grid-cols-2 items-start">
+          <div className="flex h-full flex-col justify-end">
+            <label htmlFor="firstName" className="block text-sm font-medium text-slate-700 mb-2">
               Prenom
             </label>
-            <div className="mt-2">
+            <div>
               <Input
                 id="firstName"
                 type="text"
@@ -128,11 +129,11 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="lastName" className="block text-sm font-medium text-slate-700">
+          <div className="flex h-full flex-col justify-end">
+            <label htmlFor="lastName" className="block text-sm font-medium text-slate-700 mb-2">
               Nom
             </label>
-            <div className="mt-2">
+            <div>
               <Input
                 id="lastName"
                 type="text"
@@ -161,12 +162,12 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+        <div className="grid gap-4 sm:grid-cols-2 items-start">
+          <div className="flex h-full flex-col justify-end">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
               Mot de passe
             </label>
-            <div className="mt-2">
+            <div>
               <Input
                 id="password"
                 type="password"
@@ -178,11 +179,11 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700">
+          <div className="flex h-full flex-col justify-end">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
               Confirmer le mot de passe
             </label>
-            <div className="mt-2">
+            <div>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -237,13 +238,20 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <Button type="submit" fullWidth disabled={isLoading} className="bg-slate-900 text-white hover:bg-slate-800">
-          {isLoading ? 'Creation en cours...' : 'Creer mon compte'}
+        <Button type="submit" fullWidth disabled={isLoading} className="h-11 bg-blue-600 text-base font-medium text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-lg active:scale-[0.98] disabled:opacity-70 disabled:hover:translate-y-0 disabled:cursor-not-allowed">
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Création en cours...
+            </span>
+          ) : (
+            'Créer mon compte'
+          )}
         </Button>
 
         <p className="text-center text-sm text-slate-600">
-          Vous avez deja un compte ?{' '}
-          <Link href="/login" className="font-semibold text-slate-900 hover:text-slate-700">
+          Vous avez déjà un compte ?{' '}
+          <Link href="/login" className="font-semibold text-blue-600 transition-colors hover:text-blue-700">
             Se connecter
           </Link>
         </p>

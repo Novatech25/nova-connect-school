@@ -77,6 +77,7 @@ export async function getStudentProfileSecure(userId: string) {
       .from("students")
       .select(`
         *,
+        school:schools(*),
         enrollments:enrollments(
             *,
             class:classes!enrollments_class_id_fkey(*),
@@ -94,6 +95,34 @@ export async function getStudentProfileSecure(userId: string) {
     return { data, error: null };
   } catch (err: any) {
     console.error("Server Action Error (getStudentProfileSecure):", err);
+    return { data: null, error: err.message };
+  }
+}
+
+export async function getStudentProfileByIdSecure(id: string) {
+  try {
+    const { data, error } = await adminClient
+      .from("students")
+      .select(`
+        *,
+        school:schools(*),
+        enrollments:enrollments(
+            *,
+            class:classes!enrollments_class_id_fkey(*),
+            academic_year:academic_years(*)
+        )
+      `)
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      console.error("Admin student profile by id fetch error:", error);
+      return { data: null, error: error.message, code: error.code };
+    }
+
+    return { data, error: null };
+  } catch (err: any) {
+    console.error("Server Action Error (getStudentProfileByIdSecure):", err);
     return { data: null, error: err.message };
   }
 }

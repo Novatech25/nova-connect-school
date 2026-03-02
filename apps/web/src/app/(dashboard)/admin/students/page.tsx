@@ -17,6 +17,12 @@ import {
   Edit,
   Trash2,
   MoreHorizontal,
+  Mail,
+  Phone,
+  Calendar,
+  Flag,
+  MapPin,
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -781,82 +787,115 @@ export default function StudentsManagementPage() {
       </Dialog>
 
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden">
-          <div className="bg-slate-900 text-white px-6 py-5">
-            <DialogHeader>
-              <DialogTitle className="text-white">Details de l'eleve</DialogTitle>
-              <DialogDescription className="text-slate-200">
-                Informations completes sur {selectedStudent?.firstName} {selectedStudent?.lastName}
-              </DialogDescription>
-            </DialogHeader>
-          </div>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden sm:rounded-xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Détails de l'élève</DialogTitle>
+            <DialogDescription>
+              Informations complètes sur {selectedStudent?.firstName} {selectedStudent?.lastName}
+            </DialogDescription>
+          </DialogHeader>
+
           {selectedStudent && (
-            <div className="p-6 space-y-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-20 w-20 ring-1 ring-border">
-                    <AvatarImage src={selectedStudent.photoUrl} />
-                    <AvatarFallback className="text-xl">
-                      {getInitials(selectedStudent.firstName, selectedStudent.lastName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h3 className="text-2xl font-semibold">
-                      {selectedStudent.firstName} {selectedStudent.lastName}
-                    </h3>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">Matricule: {selectedStudent.matricule || '-'} </Badge>
-                      {getStatusBadge(selectedStudent.status)}
-                    </div>
+            <div className="bg-slate-50/80 flex flex-col">
+              {/* Header Profile */}
+              <div className="bg-white px-6 pt-6 pb-5 flex items-center gap-4 border-b border-slate-200 shadow-sm relative z-10">
+                <Avatar className="h-16 w-16 border border-slate-200 shadow-sm">
+                  <AvatarImage src={selectedStudent.photoUrl} className="object-cover" />
+                  <AvatarFallback className="text-xl font-semibold bg-emerald-50 text-emerald-700">
+                    {getInitials(selectedStudent.firstName, selectedStudent.lastName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl font-bold text-slate-900 truncate">
+                    {selectedStudent.firstName} {selectedStudent.lastName}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <Badge variant="secondary" className="bg-slate-100 text-slate-600 hover:bg-slate-100 border-slate-200/60 font-mono text-xs font-medium">
+                      ID: {selectedStudent.matricule || '-'}
+                    </Badge>
+                    {getStatusBadge(selectedStudent.status)}
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Email</p>
-                  <p className="text-sm font-medium">{selectedStudent.email || '-'}</p>
+              {/* Content Details */}
+              <div className="p-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Academic */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 sm:col-span-2 lg:col-span-3">
+                  <div className="flex items-center gap-2 text-slate-500 mb-3">
+                    <GraduationCap className="h-4 w-4 text-emerald-600" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Scolarité</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">Classe</p>
+                      <p className="text-sm font-semibold text-slate-900">{detailsClass?.name || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">Niveau</p>
+                      <p className="text-sm font-semibold text-slate-900">{detailsLevel?.name || '-'}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Telephone</p>
-                  <p className="text-sm font-medium">{selectedStudent.phone || '-'}</p>
+
+                {/* Personal Info fields */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider">Email</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900 truncate" title={selectedStudent.email}>{selectedStudent.email || '-'}</p>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Date de naissance</p>
-                  <p className="text-sm font-medium">
+
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                    <Phone className="h-3.5 w-3.5" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider">Téléphone</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">{selectedStudent.phone || '-'}</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider">Naissance</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">
                     {selectedStudent.dateOfBirth
                       ? new Date(selectedStudent.dateOfBirth).toLocaleDateString('fr-FR')
                       : '-'}
+                    {selectedStudent.placeOfBirth ? ` à ${selectedStudent.placeOfBirth}` : ''}
                   </p>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Lieu de naissance</p>
-                  <p className="text-sm font-medium">{selectedStudent.placeOfBirth || '-'}</p>
+
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                    <Flag className="h-3.5 w-3.5" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider">Nationalité</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">{selectedStudent.nationality || '-'}</p>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Genre</p>
-                  <p className="text-sm font-medium">
+
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                    <User className="h-3.5 w-3.5" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider">Genre</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">
                     {selectedStudent.gender === 'male' && 'Masculin'}
-                    {selectedStudent.gender === 'female' && 'Feminin'}
+                    {selectedStudent.gender === 'female' && 'Féminin'}
                     {selectedStudent.gender === 'other' && 'Autre'}
-                    {selectedStudent.gender === 'prefer_not_to_say' && 'Non renseigne'}
+                    {selectedStudent.gender === 'prefer_not_to_say' && 'Non renseigné'}
+                    {!selectedStudent.gender && '-'}
                   </p>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Nationalite</p>
-                  <p className="text-sm font-medium">{selectedStudent.nationality || '-'}</p>
-                </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Classe</p>
-                  <p className="text-sm font-medium">{detailsClass?.name || '-'}</p>
-                </div>
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Niveau</p>
-                  <p className="text-sm font-medium">{detailsLevel?.name || '-'}</p>
-                </div>
-                <div className="md:col-span-2 rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">Adresse</p>
-                  <p className="text-sm font-medium">
+
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center sm:col-span-2 lg:col-span-3">
+                  <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                    <MapPin className="h-3.5 w-3.5" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider">Adresse</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">
                     {selectedStudent.address
                       ? `${selectedStudent.address}${selectedStudent.city ? ', ' + selectedStudent.city : ''}`
                       : '-'}
@@ -864,47 +903,59 @@ export default function StudentsManagementPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 pt-4 border-t justify-end">
+              {/* Actions Footer */}
+              <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 relative z-10">
                 <Button
-                  variant="outline"
+                  variant="default"
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
                   onClick={() => {
                     setViewDialogOpen(false);
                     setAccountDialogOpen(true);
                   }}
                 >
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Creer comptes utilisateurs
+                  <UserPlus className="mr-1.5 h-4 w-4" />
+                  Comptes utilisateurs
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setViewDialogOpen(false);
-                    router.push(`/admin/students/${selectedStudent.id}/edit`);
-                  }}
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  Modifier
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setViewDialogOpen(false);
-                    router.push(`/admin/students/${selectedStudent.id}/parents`);
-                  }}
-                >
-                  <Users className="mr-2 h-4 w-4" />
-                  Parents
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setViewDialogOpen(false);
-                    router.push(`/admin/students/${selectedStudent.id}/enrollment`);
-                  }}
-                >
-                  <GraduationCap className="mr-2 h-4 w-4" />
-                  Inscriptions
-                </Button>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      setViewDialogOpen(false);
+                      router.push(`/admin/students/${selectedStudent.id}/edit`);
+                    }}
+                  >
+                    <Edit className="mr-1.5 h-3.5 w-3.5 text-slate-500" />
+                    Modifier
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      setViewDialogOpen(false);
+                      router.push(`/admin/students/${selectedStudent.id}/parents`);
+                    }}
+                  >
+                    <Users className="mr-1.5 h-3.5 w-3.5 text-slate-500" />
+                    Parents
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      setViewDialogOpen(false);
+                      router.push(`/admin/students/${selectedStudent.id}/enrollment`);
+                    }}
+                  >
+                    <GraduationCap className="mr-1.5 h-3.5 w-3.5 text-slate-500" />
+                    Inscriptions
+                  </Button>
+                </div>
               </div>
             </div>
           )}

@@ -19,6 +19,10 @@ export function useStudentPromotionSummary(studentId: string, currentYearId: str
   });
 }
 
+export function usePeriodRanking(classId: string, periodId: string) {
+  return useQuery(promotionQueries.getPeriodRanking(classId, periodId));
+}
+
 export function useBulkPromote() {
   const queryClient = useQueryClient();
   return useMutation({

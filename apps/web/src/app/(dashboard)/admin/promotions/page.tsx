@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   TrendingUp,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +24,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Input } from '@/components/ui/input';
 import {
@@ -36,14 +46,17 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuthContext, usePromotionEligibility, useBulkPromote, useLevels, useAcademicYears } from '@novaconnect/data';
+import { useAuthContext, usePromotionEligibility, useBulkPromote, useLevels, useAcademicYears, useClasses, useSchool, usePeriods } from '@novaconnect/data';
 import {
   groupBySuggestion,
   calculatePromotionStats,
   filterEligibility,
+  promotionQueries
 } from '@novaconnect/data';
 import type { PromotionEligibility } from '@novaconnect/core';
 import { cn } from '@/lib/utils';
+import { generatePassListPdf } from '@/lib/pdf/passListPdf';
+import { generateMeritListPdf } from '@/lib/pdf/meritListPdf';
 
 export default function PromotionsPage() {
   const router = useRouter();
@@ -60,12 +73,21 @@ export default function PromotionsPage() {
   const [selectedCurrentYear, setSelectedCurrentYear] = useState<string>('');
   const [selectedNextYear, setSelectedNextYear] = useState<string>('');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
+  const [selectedClass, setSelectedClass] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [selectedSuggestion, setSelectedSuggestion] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [isPromoting, setIsPromoting] = useState(false);
+  const [isExportingMeritList, setIsExportingMeritList] = useState(false);
+  
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [targetLevelsForPromotion, setTargetLevelsForPromotion] = useState<{id: string; name: string}[]>([]);
+  const [tuitionAmounts, setTuitionAmounts] = useState<Record<string, number>>({});
 
   // Queries
+  const { school } = useSchool(schoolId || '');
+
   const {
     data: eligibility = [],
     isLoading: isLoadingEligibility,
@@ -75,12 +97,51 @@ export default function PromotionsPage() {
 
   // Fetch levels and academic years
   const { data: levels = [] } = useLevels(schoolId || '');
+  const { data: classes = [] } = useClasses(schoolId || '');
   const { data: academicYears = [] } = useAcademicYears(schoolId || '');
+  const { data: periods = [] } = usePeriods(schoolId || '', selectedCurrentYear);
+
+  // Set default years when available
+  useEffect(() => {
+    if (academicYears.length > 0 && !selectedCurrentYear) {
+      const currentYear = academicYears.find((y: any) => y.is_current) || academicYears[0];
+      if (currentYear) {
+        setSelectedCurrentYear(currentYear.id);
+        
+        // Find next logical year
+        const nextYears = academicYears
+          .filter((y: any) => new Date(y.start_date) > new Date(currentYear.start_date))
+          .sort((a: any, b: any) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+          
+        if (nextYears.length > 0 && !selectedNextYear) {
+          setSelectedNextYear(nextYears[0].id);
+        }
+      }
+    }
+  }, [academicYears, selectedCurrentYear, selectedNextYear]);
+
+  // Also reset period when year changes
+  useEffect(() => {
+    setSelectedPeriod('all');
+  }, [selectedCurrentYear]);
+
+  // Reset class selection when level changes
+  useEffect(() => {
+    if (selectedLevel !== 'all') {
+      setSelectedClass('all');
+    }
+  }, [selectedLevel]);
+
+  // Compute filtered classes based on selected level
+  const filteredClasses = classes.filter((c: any) => 
+    selectedLevel === 'all' || c.levelId === selectedLevel
+  );
 
   // Filter and group data
   const filteredData = filterEligibility(eligibility, {
     status: selectedSuggestion !== 'all' ? [selectedSuggestion] : undefined,
     levelId: selectedLevel !== 'all' ? selectedLevel : undefined,
+    classId: selectedClass !== 'all' ? selectedClass : undefined,
     searchQuery: searchQuery || undefined,
   });
 
@@ -107,8 +168,8 @@ export default function PromotionsPage() {
     setSelectedStudents(new Set());
   };
 
-  // Execute promotion
-  const handlePromoteSelected = async () => {
+  // Open configuration modal
+  const handleOpenConfig = () => {
     if (!schoolId || !selectedCurrentYear || !selectedNextYear) {
       toast({
         title: 'Paramètres manquants',
@@ -127,16 +188,48 @@ export default function PromotionsPage() {
       return;
     }
 
+    const targetLevels = Array.from(selectedStudents).reduce((acc, studentId) => {
+      const student = eligibility.find((s) => s.studentId === studentId);
+      if (student) {
+        const targetLevelId = student.nextLevelId || student.currentLevelId;
+        const targetLevelName = student.nextLevelName || student.currentLevelName;
+        
+        if (targetLevelId && !acc.some(l => l.id === targetLevelId)) {
+          acc.push({ id: targetLevelId, name: targetLevelName });
+        }
+      }
+      return acc;
+    }, [] as { id: string; name: string }[]);
+
+    setTargetLevelsForPromotion(targetLevels);
+    
+    // Initialize tuition amounts if not set
+    const newTuitionAmounts = { ...tuitionAmounts };
+    targetLevels.forEach(l => {
+      if (newTuitionAmounts[l.id] === undefined) {
+        newTuitionAmounts[l.id] = 0;
+      }
+    });
+    setTuitionAmounts(newTuitionAmounts);
+    
+    setIsConfigModalOpen(true);
+  };
+
+  // Execute promotion
+  const handlePromoteSelected = async () => {
     setIsPromoting(true);
 
     try {
       // Build promotions array
       const promotions = Array.from(selectedStudents).map((studentId) => {
         const student = eligibility.find((s) => s.studentId === studentId);
+        const targetLevelId = student?.nextLevelId || student?.currentLevelId;
+        
         return {
           studentId,
-          targetClassId: student?.nextLevelId || student?.currentClassId,
+          targetClassId: targetLevelId || '',
           isRepeating: !student?.isEligibleForPromotion,
+          annualTuitionAmount: targetLevelId ? tuitionAmounts[targetLevelId] : undefined,
         };
       });
 
@@ -149,14 +242,28 @@ export default function PromotionsPage() {
       });
 
       // Show results
-      toast({
-        title: 'Promotion terminée',
-        description: `${result.successful} élèves promouvés, ${result.failed} échecs`,
-        variant: result.failed === 0 ? 'default' : 'destructive',
-      });
+      if (result.failed > 0) {
+        const errorDetails = result.results
+          .filter((r: any) => !r.success)
+          .map((r: any) => r.message || r.error || 'Erreur inconnue')
+          .join(', ');
+
+        toast({
+          title: 'Promotion avec échecs',
+          description: `${result.successful} promouvés, ${result.failed} échecs. Détails: ${errorDetails}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Promotion terminée',
+          description: `${result.successful} élèves promouvés avec succès`,
+          variant: 'default',
+        });
+      }
 
       // Clear selection and refetch
       setSelectedStudents(new Set());
+      setIsConfigModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['promotions'] });
       queryClient.invalidateQueries({ queryKey: ['enrollments'] });
     } catch (error: any) {
@@ -167,6 +274,77 @@ export default function PromotionsPage() {
       });
     } finally {
       setIsPromoting(false);
+    }
+  };
+
+  // Export PDF
+  const handleExportPdf = async () => {
+    if (!schoolId) return;
+
+    const currentYearObj = academicYears.find((y: any) => y.id === selectedCurrentYear);
+    const nextYearObj = academicYears.find((y: any) => y.id === selectedNextYear);
+    const levelObj = levels.find((l: any) => l.id === selectedLevel);
+    const classObj = classes.find((c: any) => c.id === selectedClass);
+
+    await generatePassListPdf({
+      school: school || profile?.school || user?.school || { name: 'Établissement' },
+      academicYear: currentYearObj,
+      nextAcademicYear: nextYearObj,
+      levelName: levelObj?.name,
+      className: classObj?.name,
+      students: filteredData,
+    });
+  };
+
+  const handleExportMeritListPdf = async () => {
+    if (!schoolId || selectedClass === 'all' || selectedPeriod === 'all') {
+      toast({
+        title: "Paramètres manquants",
+        description: "Veuillez sélectionner une classe et une période pour générer le palmarès.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsExportingMeritList(true);
+
+    try {
+      // Fetch ranking explicitly to avoid re-rendering layout just for generating export.
+      const rankingData = await queryClient.fetchQuery(
+         promotionQueries.getPeriodRanking(selectedClass, selectedPeriod)
+      );
+
+      if (!rankingData || rankingData.length === 0) {
+        toast({
+          title: "Aucune donnée",
+          description: "Aucun bulletin vérifié n'a été trouvé pour cette classe et cette période.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const currentYearObj = academicYears.find((y: any) => y.id === selectedCurrentYear);
+      const levelObj = levels.find((l: any) => l.id === selectedLevel);
+      const classObj = classes.find((c: any) => c.id === selectedClass);
+      const periodObj = periods.find((p: any) => p.id === selectedPeriod);
+
+      await generateMeritListPdf({
+        school: school || profile?.school || user?.school || { name: 'Établissement' },
+        academicYear: currentYearObj,
+        periodName: periodObj?.name,
+        levelName: levelObj?.name,
+        className: classObj?.name,
+        students: rankingData,
+      });
+
+    } catch (error: any) {
+      console.error("[Export Palmarès] Erreur complète:", error);
+      toast({
+        title: "Erreur d'exportation",
+        description: `Une erreur est survenue lors de la compilation du palmarès: ${error?.message || 'Erreur inconnue'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingMeritList(false);
     }
   };
 
@@ -324,22 +502,48 @@ export default function PromotionsPage() {
                 />
               </div>
 
+              {/* Class Filter */}
+              <div className="space-y-2">
+                <label htmlFor="class" className="text-sm font-medium">Classe</label>
+                <SearchableSelect
+                  options={filteredClasses.map((c: any) => ({ value: c.id, label: c.name }))}
+                  value={selectedClass}
+                  onValueChange={setSelectedClass}
+                  placeholder="Toutes les classes"
+                  searchPlaceholder="Rechercher une classe..."
+                  allLabel="Toutes les classes"
+                />
+              </div>
+
+              {/* Period Filter */}
+              <div className="space-y-2">
+                <label htmlFor="period" className="text-sm font-medium">Période (Pour Palmarès)</label>
+                <SearchableSelect
+                  options={periods.map((p: any) => ({ value: p.id, label: p.name }))}
+                  value={selectedPeriod}
+                  onValueChange={setSelectedPeriod}
+                  placeholder="Toutes les périodes"
+                  searchPlaceholder="Rechercher une période..."
+                  allLabel="Toutes les périodes"
+                  disabled={!selectedCurrentYear}
+                />
+              </div>
+
               {/* Suggestion Filter */}
               <div className="space-y-2">
-                <label htmlFor="suggestion" className="text-sm font-medium">Statut</label>
-                <SearchableSelect
-                  options={[
-                    { value: 'eligible', label: 'À promouvoir' },
-                    { value: 'borderline', label: 'À considérer' },
-                    { value: 'failing', label: 'En difficulté' },
-                    { value: 'pending', label: 'En attente' },
-                  ]}
-                  value={selectedSuggestion}
-                  onValueChange={setSelectedSuggestion}
-                  placeholder="Tous les statuts"
-                  searchPlaceholder="Rechercher un statut..."
-                  allLabel="Tous les statuts"
-                />
+                <label htmlFor="suggestion" className="text-sm font-medium">Décision du Conseil</label>
+                <Select value={selectedSuggestion} onValueChange={setSelectedSuggestion}>
+                  <SelectTrigger className="h-10 bg-white border-gray-200 hover:border-blue-300 transition-colors">
+                    <SelectValue placeholder="Toutes les décisions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les décisions</SelectItem>
+                    <SelectItem value="eligible">Admis (Promouvoir)</SelectItem>
+                    <SelectItem value="borderline">Ajournés (À considérer)</SelectItem>
+                    <SelectItem value="failing">Recalés (Redoublement)</SelectItem>
+                    <SelectItem value="pending">En attente des notes</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Search */}
@@ -359,14 +563,36 @@ export default function PromotionsPage() {
         {/* Students Table */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <CardTitle>Élèves à Promouvoir</CardTitle>
                 <CardDescription>
                   {selectedStudents.size} élève(s) sélectionné(s)
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 mt-4 sm:mt-0">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleExportPdf}
+                  disabled={filteredData.length === 0}
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Exporter (PDF)
+                </Button>
+                {selectedClass !== 'all' && selectedPeriod !== 'all' && (
+                  <Button
+                    variant="default"
+                    className="bg-purple-600 hover:bg-purple-700 gap-2"
+                    size="sm"
+                    onClick={handleExportMeritListPdf}
+                    disabled={isExportingMeritList}
+                  >
+                    <Download className="h-4 w-4" />
+                    {isExportingMeritList ? 'Compilation...' : 'Palmarès (PDF)'}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -377,7 +603,7 @@ export default function PromotionsPage() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={handlePromoteSelected}
+                  onClick={handleOpenConfig}
                   disabled={selectedStudents.size === 0 || isPromoting}
                 >
                   {isPromoting ? 'Promotion...' : `Promouvoir (${selectedStudents.size})`}
@@ -386,20 +612,23 @@ export default function PromotionsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoadingEligibility ? (
+            {isLoadingEligibility && selectedCurrentYear ? (
               <div className="flex justify-center py-8">
-                <div className="text-center">
-                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent mb-4" />
-                  <p className="text-sm text-muted-foreground">Chargement...</p>
-                </div>
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent mb-4" />
+                <p className="text-sm text-muted-foreground">Chargement...</p>
+              </div>
+            ) : !selectedCurrentYear ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Veuillez sélectionner une année actuelle pour afficher les élèves à promouvoir
               </div>
             ) : filteredData.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 Aucun élève trouvé avec les filtres actuels
               </div>
             ) : (
-              <Table>
-                <TableHeader>
+              <div className="overflow-x-auto border rounded-md">
+                <Table className="min-w-[700px]">
+                  <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-12">
                       <Checkbox
@@ -504,10 +733,50 @@ export default function PromotionsPage() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Configuration Modal */}
+        <Dialog open={isConfigModalOpen} onOpenChange={setIsConfigModalOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Configuration des frais de scolarité</DialogTitle>
+              <DialogDescription>
+                Définissez les frais de scolarité annuels pour les classes dans lesquelles les élèves seront placés.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+              {targetLevelsForPromotion.map((level) => (
+                <div key={level.id} className="grid grid-cols-1 sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4 p-2 sm:p-0">
+                  <Label htmlFor={`fee-${level.id}`} className="sm:col-span-2 text-sm font-medium">
+                    {level.name}
+                  </Label>
+                  <Input
+                    id={`fee-${level.id}`}
+                    type="number"
+                    className="sm:col-span-2"
+                    value={tuitionAmounts[level.id] || 0}
+                    onChange={(e) => setTuitionAmounts({
+                      ...tuitionAmounts,
+                      [level.id]: parseFloat(e.target.value) || 0
+                    })}
+                  />
+                </div>
+              ))}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setIsConfigModalOpen(false)} disabled={isPromoting} className="w-full sm:w-auto">
+                Annuler
+              </Button>
+              <Button onClick={handlePromoteSelected} disabled={isPromoting} className="w-full sm:w-auto">
+                {isPromoting ? 'Promotion...' : 'Confirmer'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

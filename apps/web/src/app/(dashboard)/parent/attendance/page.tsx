@@ -16,19 +16,23 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
-    Calendar,
+    Calendar as CalendarIcon,
     Clock,
     AlertCircle,
     CheckCircle,
     XCircle,
     User,
     ArrowLeft,
-    Filter,
-    RefreshCw
+    Filter
 } from "lucide-react";
-import { format, parseISO, isSameDay, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { getAcademicYearsSecure } from "@/actions/payment-actions";
+import { cn } from "@/lib/utils";
 
 interface Student {
     id: string;
@@ -65,6 +69,9 @@ export default function MyAttendancePage() {
     
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
     const [periodFilter, setPeriodFilter] = useState<string>("30days");
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+    const [selectedYearId, setSelectedYearId] = useState<string>("all");
+    const [academicYearsList, setAcademicYearsList] = useState<any[]>([]);
 
     const fetchChildren = async () => {
         setIsLoadingParent(true);
@@ -174,8 +181,38 @@ export default function MyAttendancePage() {
         }
     }, [parentData, selectedStudentId]);
 
+    const selectedStudent = parentData?.students.find((s: any) => s.student.id === selectedStudentId)?.student;
+    const schoolId = selectedStudent?.school_id || selectedStudent?.schoolId || profile?.school_id || profile?.school?.id || '';
+
+    // Initialize academic year filter
+    useEffect(() => {
+        const fetchYears = async () => {
+            if (schoolId) {
+                const { data: years } = await getAcademicYearsSecure(schoolId);
+                if (years) {
+                    setAcademicYearsList(years);
+                    if (selectedYearId === 'all') {
+                        const currentYear = years.find((y: any) => y.is_current);
+                        if (currentYear) {
+                            setSelectedYearId(currentYear.id);
+                        } else if (years.length > 0) {
+                            setSelectedYearId(years[0].id);
+                        }
+                    }
+                }
+            }
+        };
+        fetchYears();
+    }, [schoolId]);
+
     // Calculate date range based on filter
     const getDateRange = () => {
+        // If exact date is picked, return same start and end date
+        if (selectedDate) {
+            const exactDate = format(selectedDate, 'yyyy-MM-dd');
+            return { startDate: exactDate, endDate: exactDate };
+        }
+
         const end = new Date();
         let start = new Date();
         
@@ -185,6 +222,8 @@ export default function MyAttendancePage() {
             start.setDate(end.getDate() - 90);
         } else if (periodFilter === "year") {
             start.setMonth(end.getMonth() - 12);
+        } else if (periodFilter === "all") {
+            return { startDate: undefined, endDate: undefined };
         }
         
         return {
@@ -197,9 +236,19 @@ export default function MyAttendancePage() {
 
     // Fetch attendance for selected student
     const { 
-        data: attendanceRecords = [], 
+        data: rawAttendanceRecords = [], 
         isLoading: isLoadingAttendance 
     } = useStudentAttendance(selectedStudentId || "", startDate, endDate);
+
+    // Apply Academic Year local filter since Supabase query doesn't handle relation filter neatly in the hook
+    const attendanceRecords = rawAttendanceRecords.filter((record: any) => {
+        if (selectedYearId !== 'all') {
+            const classRef = record.attendanceSession?.class;
+            if (classRef && classRef.academic_year_id && classRef.academic_year_id !== selectedYearId) return false;
+            // Additional fallback if you track year directly on session or record
+        }
+        return true;
+    });
 
     // Calculate stats
     const stats = attendanceRecords.reduce((acc: any, record: any) => {
@@ -328,8 +377,6 @@ export default function MyAttendancePage() {
         );
     }
 
-    const selectedStudent = parentData.students.find((s: any) => s.student.id === selectedStudentId)?.student;
-
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
             <div className="mx-auto w-full max-w-7xl px-3 sm:px-6 py-4 sm:py-6 space-y-6">
@@ -393,19 +440,87 @@ export default function MyAttendancePage() {
                 )}
 
                 {/* Filters */}
-                <div className="flex justify-end">
-                    <div className="flex items-center gap-2">
-                        <Filter className="h-4 w-4 text-gray-500" />
-                        <Select value={periodFilter} onValueChange={setPeriodFilter}>
-                            <SelectTrigger className="w-[180px] h-9 text-sm">
-                                <SelectValue placeholder="Période" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="30days">30 derniers jours</SelectItem>
-                                <SelectItem value="90days">3 derniers mois</SelectItem>
-                                <SelectItem value="year">Année scolaire</SelectItem>
-                            </SelectContent>
-                        </Select>
+                <div className="flex flex-col sm:flex-row justify-end items-end gap-3 sm:gap-4 p-4 rounded-xl bg-white border border-border/60 shadow-sm">
+                    <div className="flex flex-col md:flex-row items-end gap-3 w-full justify-between">
+                        {/* Title filter */}
+                        <div className="flex items-center gap-2 text-gray-700">
+                             <Filter className="h-4 w-4" />
+                             <span className="text-sm font-medium">Filtres</span>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-end gap-3 w-full sm:w-auto">
+                            {/* Academic Year Select */}
+                            <div className="w-full sm:w-auto">
+                                <label className="text-xs font-medium text-gray-500 mb-1 block">Année scolaire</label>
+                                <SearchableSelect
+                                    value={selectedYearId}
+                                    onValueChange={setSelectedYearId}
+                                    options={[
+                                        { value: 'all', label: 'Toutes les années' },
+                                        ...academicYearsList.map((y: any) => ({
+                                            value: y.id,
+                                            label: y.name || 'Inconnue',
+                                            badge: y.is_current ? 'Actuelle' : undefined
+                                        }))
+                                    ]}
+                                    placeholder="Toutes les années"
+                                    className="w-full sm:w-[180px] h-9"
+                                />
+                            </div>
+
+                            {/* Period Select */}
+                            <div className="w-full sm:w-auto">
+                                <label className="text-xs font-medium text-gray-500 mb-1 block">Période d'analyse</label>
+                                <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                                    <SelectTrigger className="w-full sm:w-[150px] h-9 text-sm">
+                                        <SelectValue placeholder="Période" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="30days">30 derniers jours</SelectItem>
+                                        <SelectItem value="90days">3 derniers mois</SelectItem>
+                                        <SelectItem value="year">Année scolaire</SelectItem>
+                                        <SelectItem value="all">Toutes les dates</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Specific Date Select */}
+                            <div className="w-full sm:w-auto">
+                                <label className="text-xs font-medium text-gray-500 mb-1 flex justify-between">
+                                    Date précise 
+                                    {selectedDate && (
+                                        <button onClick={() => setSelectedDate(undefined)} className="ml-2 text-red-500 hover:text-red-700">Effacer</button>
+                                    )}
+                                </label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant={'outline'}
+                                            className={cn(
+                                                'w-full sm:w-[180px] justify-start text-left font-normal h-9 px-3',
+                                                !selectedDate && 'text-muted-foreground'
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {selectedDate ? (
+                                                format(selectedDate, "d MMM yyyy", { locale: fr })
+                                            ) : (
+                                                <span>Filtre exact...</span>
+                                            )}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="end">
+                                        <Calendar
+                                            mode="single"
+                                            selected={selectedDate}
+                                            onSelect={setSelectedDate}
+                                            initialFocus
+                                            locale={fr}
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -449,7 +564,7 @@ export default function MyAttendancePage() {
                 </div>
 
                 {/* Attendance List */}
-                <Card className="border-border/60 shadow-sm">
+                <Card className="border-border/60 shadow-sm mt-6">
                     <CardHeader className="px-4 py-4 border-b bg-gray-50/50">
                         <CardTitle className="text-base font-semibold">Historique détaillé</CardTitle>
                     </CardHeader>
@@ -476,19 +591,19 @@ export default function MyAttendancePage() {
                                             </div>
                                             <div>
                                                 <div className="font-medium text-gray-900">
-                                                    {format(parseISO(record.date), "EEEE d MMMM yyyy", { locale: fr })}
+                                                    {format(parseISO(record.markedAt || record.sessionDate || record.date || new Date().toISOString()), "EEEE d MMMM yyyy", { locale: fr })}
                                                 </div>
                                                 <div className="text-sm text-gray-500 flex flex-wrap gap-2 mt-0.5">
-                                                    {record.startTime && (
+                                                    {record.attendanceSession?.plannedSession?.startTime && (
                                                         <span className="flex items-center gap-1">
                                                             <Clock className="h-3 w-3" />
-                                                            {record.startTime.substring(0, 5)}
-                                                            {record.endTime && ` - ${record.endTime.substring(0, 5)}`}
+                                                            {record.attendanceSession.plannedSession.startTime.substring(0, 5)}
+                                                            {record.attendanceSession.plannedSession.endTime && ` - ${record.attendanceSession.plannedSession.endTime.substring(0, 5)}`}
                                                         </span>
                                                     )}
-                                                    {record.subject && (
+                                                    {record.attendanceSession?.plannedSession?.subjectName && (
                                                         <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">
-                                                            {record.subject.name}
+                                                            {record.attendanceSession.plannedSession.subjectName}
                                                         </span>
                                                     )}
                                                 </div>

@@ -15,6 +15,7 @@ import {
   useEnrollmentsByStudent,
   useStudent,
   useUpdateEnrollment,
+  useApplyExemption,
 } from '@novaconnect/data';
 import { useAuthContext } from '@novaconnect/data/providers';
 import { enrollmentStatusSchema, type CreateEnrollment } from '@novaconnect/core';
@@ -78,6 +79,7 @@ export default function StudentEnrollmentPage({ params }: PageProps) {
 
   const updateEnrollmentMutation = useUpdateEnrollment();
   const createEnrollmentMutation = useCreateEnrollment();
+  const applyExemptionMutation = useApplyExemption();
 
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -153,15 +155,63 @@ export default function StudentEnrollmentPage({ params }: PageProps) {
     }
   };
 
-  const handleCreateEnrollment = async (data: CreateEnrollment) => {
-    await createEnrollmentMutation.mutateAsync(data);
-    await queryClient.invalidateQueries({
-      queryKey: ['enrollments', 'student', studentId],
-    });
-    toast({
-      title: 'Inscription creee',
-      description: "L'eleve a ete inscrit avec succes.",
-    });
+  const handleCreateEnrollment = async (data: any) => {
+    try {
+      const created = await createEnrollmentMutation.mutateAsync({
+        ...data,
+      });
+
+      // Handle Scholarship Application if selected
+      if (data.scholarshipType && data.scholarshipType !== 'none') {
+        if (!user?.id) {
+            throw new Error('Utilisateur non disponible pour valider la bourse.');
+        }
+
+        const selectedYear = academicYears.find((year: any) => year.id === data.academicYearId);
+        const validFromCandidate = selectedYear?.startDate || data.enrollmentDate || new Date();
+        const validFromDate = new Date(validFromCandidate);
+        const validUntilDate = selectedYear?.endDate ? new Date(selectedYear.endDate) : undefined;
+        
+        const resolvedValidFrom = Number.isNaN(validFromDate.getTime()) ? new Date() : validFromDate;
+        const resolvedValidUntil = validUntilDate && !Number.isNaN(validUntilDate.getTime()) ? validUntilDate : undefined;
+        
+        const percentage = data.scholarshipType === 'full' ? 100 : data.scholarshipType === 'partial' ? 50 : 0;
+        const reason = data.scholarshipReason?.trim() || (data.scholarshipType === 'full' ? 'Bourse' : 'Demi-bourse');
+
+        await applyExemptionMutation.mutateAsync({
+            schoolId,
+            approvedBy: user.id,
+            student_id: studentId,
+            exemption_type: 'scholarship',
+            percentage,
+            reason,
+            valid_from: resolvedValidFrom,
+            valid_until: resolvedValidUntil,
+            applies_to_fee_types: [],
+            metadata: { scholarshipType: data.scholarshipType },
+        });
+      }
+
+      await queryClient.invalidateQueries({
+        queryKey: ['enrollments', 'student', studentId],
+      });
+      
+      let msg = "L'eleve a ete inscrit avec succes.";
+      if (data.annualTuitionAmount && data.annualTuitionAmount > 0) {
+        msg += `\nScolarite générée: ${Math.round(data.annualTuitionAmount).toLocaleString('fr-FR')} FCFA`;
+      }
+
+      toast({
+        title: 'Inscription creee',
+        description: msg,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erreur',
+        description: error.message || "Erreur lors de l'inscription.",
+        variant: 'destructive',
+      });
+    }
   };
 
   if (isStudentLoading || isEnrollmentsLoading) {

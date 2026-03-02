@@ -85,7 +85,7 @@ const NAVIGATION_BY_ROLE: Record<UserRole, NavSection[]> = {
       items: [
         { name: 'Étudiants', href: '/admin/students', icon: UserGroupIcon },
         { name: 'Cartes étudiantes', href: '/admin/student-cards', icon: DocumentTextIcon },
-        { name: 'Documents', href: '/admin/students', icon: DocumentTextIcon },
+        { name: 'Documents', href: '/admin/documents', icon: DocumentTextIcon },
       ],
     },
     {

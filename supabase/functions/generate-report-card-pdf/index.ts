@@ -1,0 +1,1254 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+import { corsHeaders } from '../_shared/cors.ts';
+
+// Import PDF generation library (using jsPDF for Deno)
+import { jsPDF } from 'https://esm.sh/jspdf@2.5.1';
+// Retrait de la librairie QRCode cause: Canvas non supporté sur Deno
+// On va utiliser une API externe directement dans le code.
+
+interface GenerateReportCardRequest {
+  studentId: string;
+  periodId: string;
+  regenerate?: boolean;
+  templateId?: string;
+}
+
+async function fetchImageAsBase64(url: string | undefined): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    const contentType = response.headers.get('content-type') || 'image/png';
+    return `data:${contentType};base64,${btoa(binary)}`;
+  } catch (error) {
+    console.error('Error fetching image:', error);
+    return null;
+  }
+}
+
+type SchoolLevelType = 'primary' | 'middle_school' | 'high_school' | 'university';
+
+interface SchoolTheme {
+  name: string;
+  colors: {
+    primary: [number, number, number];
+    secondary: [number, number, number];
+    accent: [number, number, number];
+    background: [number, number, number];
+  };
+  title: string;
+  subtitle: string;
+  showRanking: boolean;
+  showMention: boolean;
+  showBehavior: boolean;
+  showAbsences: boolean;
+  gradePrecision: number;
+  appreciationText: boolean;
+}
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const qrSigningSecret = Deno.env.get('QR_SIGNING_SECRET') || 'default-secret-key';
+
+// Thèmes adaptatifs selon le type d'école
+const SCHOOL_THEMES: Record<SchoolLevelType, SchoolTheme> = {
+  primary: {
+    name: 'École Primaire',
+    colors: {
+      primary: [34, 139, 34],      // Vert primaire
+      secondary: [144, 238, 144],  // Vert clair
+      accent: [255, 193, 7],       // Jaune/or
+      background: [240, 255, 240], // Vert très clair
+    },
+    title: 'BULLETIN SCOLAIRE',
+    subtitle: 'École Primaire',
+    showRanking: true,
+    showMention: false,
+    showBehavior: true,
+    showAbsences: true,
+    gradePrecision: 1,
+    appreciationText: true,
+  },
+  middle_school: {
+    name: 'Collège',
+    colors: {
+      primary: [30, 58, 138],      // Bleu marine
+      secondary: [59, 130, 246],   // Bleu
+      accent: [16, 185, 129],      // Vert émeraude
+      background: [248, 250, 252], // Gris bleu clair
+    },
+    title: 'BULLETIN TRIMESTRIEL',
+    subtitle: 'Collège',
+    showRanking: true,
+    showMention: true,
+    showBehavior: true,
+    showAbsences: true,
+    gradePrecision: 2,
+    appreciationText: true,
+  },
+  high_school: {
+    name: 'Lycée',
+    colors: {
+      primary: [88, 28, 135],      // Violet profond
+      secondary: [147, 51, 234],   // Violet
+      accent: [236, 72, 153],      // Rose/magenta
+      background: [250, 245, 255], // Violet très clair
+    },
+    title: 'BULLETIN SEMESTRIEL',
+    subtitle: 'Lycée',
+    showRanking: true,
+    showMention: true,
+    showBehavior: false,
+    showAbsences: true,
+    gradePrecision: 2,
+    appreciationText: true,
+  },
+  university: {
+    name: 'Université',
+    colors: {
+      primary: [127, 29, 29],      // Bordeaux/rouge sombre
+      secondary: [185, 28, 28],    // Rouge
+      accent: [217, 119, 6],       // Or/ambre
+      background: [255, 251, 235], // Crème
+    },
+    title: 'BULLETIN DE NOTES',
+    subtitle: 'Université',
+    showRanking: false,
+    showMention: false,
+    showBehavior: false,
+    showAbsences: false,
+    gradePrecision: 2,
+    appreciationText: false,
+  },
+};
+
+// Couleurs de base
+const COLORS = {
+  warning: [245, 158, 11],
+  danger: [239, 68, 68],
+  text: {
+    dark: [15, 23, 42],
+    medium: [71, 85, 105],
+    light: [148, 163, 184],
+  },
+  background: {
+    rowEven: [241, 245, 249],
+    rowOdd: [255, 255, 255],
+    highlight: [224, 242, 254],
+  }
+};
+
+function getMentionColor(mention?: string): number[] {
+  if (!mention) return COLORS.text.medium;
+  const m = mention.toLowerCase();
+  if (m.includes('excellent') || m.includes('très bien') || m.includes('tres bien')) return [16, 185, 129];
+  if (m.includes('bien')) return [59, 130, 246];
+  if (m.includes('assez bien')) return [245, 158, 11];
+  if (m.includes('passable')) return [249, 115, 22];
+  return COLORS.danger;
+}
+
+function getAppreciation(average: number, levelType: SchoolLevelType): string {
+  if (levelType === 'primary') {
+    if (average >= 17) return "Excellent travail ! Félicitations !";
+    if (average >= 14) return "Très bon travail, continue ainsi !";
+    if (average >= 12) return "Bon travail, efforts à poursuivre.";
+    if (average >= 10) return "Travail satisfaisant, peut mieux faire.";
+    return "Efforts insuffisants, doit travailler davantage.";
+  }
+  
+  if (average >= 16) return "Félicitations";
+  if (average >= 14) return "Encouragements";
+  if (average >= 12) return "Poursuivez vos efforts";
+  if (average >= 10) return "Efforts à fournir";
+  return "Insuffisant";
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const rawAuthHeader =
+      req.headers.get('x-user-token') ||
+      req.headers.get('x-user-jwt') ||
+      req.headers.get('Authorization') ||
+      '';
+
+    if (!rawAuthHeader) {
+      throw new Error('Missing authorization header');
+    }
+
+    const token = rawAuthHeader.startsWith('Bearer ')
+      ? rawAuthHeader.replace('Bearer ', '')
+      : rawAuthHeader;
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      throw new Error('Invalid authorization token');
+    }
+
+    // Verify user has permission (school_admin/accountant/super_admin)
+    const { data: roleRows, error: roleError } = await supabase
+      .from('user_roles')
+      .select('school_id, roles(name)')
+      .eq('user_id', user.id);
+
+    if (roleError || !roleRows || roleRows.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Unauthorized' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const allowedRoles = new Set(['school_admin', 'accountant', 'super_admin']);
+    const isSuperAdmin = roleRows.some((row) => (row as any)?.roles?.name === 'super_admin');
+    const hasAccess = roleRows.some((row) => {
+      const roleName = (row as any)?.roles?.name;
+      return roleName && allowedRoles.has(roleName);
+    });
+
+    if (!hasAccess) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Unauthorized' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { studentId, periodId, regenerate, templateId = 'classic' }: GenerateReportCardRequest = await req.json();
+
+    // Check if report card already exists
+    const { data: existingCard } = await supabase
+      .from('report_cards')
+      .select('*')
+      .eq('student_id', studentId)
+      .eq('period_id', periodId)
+      .single();
+
+    if (existingCard && !regenerate) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          reportCard: existingCard,
+          message: 'Report card already exists'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Generate report card data using SQL function
+    const { data: reportData, error: dataError } = await supabase
+      .rpc('generate_report_card_data', {
+        p_student_id: studentId,
+        p_period_id: periodId
+      });
+
+    if (dataError) {
+      throw new Error(dataError.message || 'Failed to generate report card data');
+    }
+    if (!reportData || reportData.length === 0) {
+      throw new Error('No report card data returned for this student/period');
+    }
+
+    const cardData = reportData[0];
+
+    // Fetch additional student, class, period, school info
+    const { data: student } = await supabase
+      .from('students')
+      .select('id, first_name, last_name, matricule, school_id, date_of_birth, place_of_birth, gender')
+      .eq('id', studentId)
+      .single();
+
+    const { data: studentClass } = await supabase
+      .from('classes')
+      .select('id, name, level_id')
+      .eq('id', cardData.class_id)
+      .single();
+
+    // Récupérer le type de niveau (primary, middle_school, high_school, university)
+    const { data: level } = await supabase
+      .from('levels')
+      .select('name, level_type')
+      .eq('id', studentClass?.level_id)
+      .single();
+
+    const levelType = (level?.level_type as SchoolLevelType) || 'middle_school';
+    const theme = { 
+      ...SCHOOL_THEMES[levelType], 
+      colors: { ...SCHOOL_THEMES[levelType].colors } 
+    };
+
+    // Override colors based on templateId
+    if (templateId === 'blue') {
+      theme.colors.primary = [30, 58, 138];
+      theme.colors.secondary = [59, 130, 246];
+    } else if (templateId === 'green') {
+      theme.colors.primary = [5, 150, 105]; 
+      theme.colors.secondary = [16, 185, 129];
+    } else if (templateId === 'purple') {
+      theme.colors.primary = [109, 40, 217]; 
+      theme.colors.secondary = [139, 92, 246];
+    } else if (templateId === 'red') {
+      theme.colors.primary = [190, 18, 60]; 
+      theme.colors.secondary = [225, 29, 72];
+    } else if (templateId === 'orange') {
+      theme.colors.primary = [234, 88, 12]; 
+      theme.colors.secondary = [249, 115, 22];
+    }
+
+    const { data: period } = await supabase
+      .from('periods')
+      .select('id, name, academic_year_id, start_date, end_date')
+      .eq('id', periodId)
+      .single();
+
+    if (!student || !period) {
+      throw new Error('Failed to fetch student or period data');
+    }
+
+    const { data: school } = await supabase
+      .from('schools')
+      .select('id, name, logo_url, address, city, country, phone, email, website')
+      .eq('id', student.school_id)
+      .single();
+      
+    const logoBase64 = await fetchImageAsBase64(school?.logo_url);
+
+    const { data: academicYear } = await supabase
+      .from('academic_years')
+      .select('id, name')
+      .eq('id', cardData.academic_year_id)
+      .single();
+
+    // Récupérer l'effectif
+    const { data: classStats } = await supabase
+      .from('enrollments')
+      .select('student_id')
+      .eq('class_id', cardData.class_id)
+      .eq('academic_year_id', cardData.academic_year_id);
+
+    // Récupérer les absences si nécessaire
+    let absences = { justified: 0, unjustified: 0 };
+    if (theme.showAbsences) {
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select('status')
+        .eq('student_id', studentId)
+        .gte('date', period.start_date)
+        .lte('date', period.end_date);
+      
+      if (attendanceData) {
+        absences.justified = attendanceData.filter(a => a.status === 'absent_justified').length;
+        absences.unjustified = attendanceData.filter(a => a.status === 'absent').length;
+      }
+    }
+
+    const subjectAverages = Array.isArray(cardData.subject_averages)
+      ? cardData.subject_averages
+      : typeof cardData.subject_averages === 'string'
+        ? JSON.parse(cardData.subject_averages || '[]')
+        : [];
+    const hasPublishedGrades = subjectAverages.length > 0;
+
+    // Generate PDF with adaptive design
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 10; // Réduit pour gagner de l'espace (~5mm)
+    const contentWidth = pageWidth - (margin * 2);
+
+    // EN-TÊTE OFFICIEL MALIEN
+    let yPos = margin - 3;
+    
+    const headerParams = {
+      boxHeight: 30, // Réduit la hauteur de la boîte d'en-tête (34 -> 30)
+      stripY: yPos + 16,
+      stripHeight: 6 // Bandeau école réduit
+    };
+
+    doc.setDrawColor(theme.colors.secondary[0], theme.colors.secondary[1], theme.colors.secondary[2]);
+    doc.setLineWidth(0.5);
+    // Cadre principal avec fond coloré
+    doc.setFillColor(theme.colors.primary[0], theme.colors.primary[1], theme.colors.primary[2]);
+    doc.rect(margin, yPos, contentWidth, headerParams.boxHeight, 'FD'); // Fill and Draw
+
+    // Couleur de texte par défaut: Blanc pour ressortir sur la couleur de fond
+    doc.setTextColor(255, 255, 255);
+    
+    // Partie Gauche
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    
+    if (levelType === 'university') {
+      doc.text('Ministère de l\'Enseignement Supérieur', margin + 2, yPos + 5);
+      doc.text('et de la Recherche Scientifique', margin + 2, yPos + 9);
+    } else {
+      doc.text('Ministère de l\'Education Nationale', margin + 2, yPos + 5);
+    }
+    
+    // Reste de la partie gauche reste vide (AE / CAP supprimés)
+
+    // Partie Droite
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('République du Mali', pageWidth - margin - 2, yPos + 5, { align: 'right' });
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Un Peuple – Un But – Une Foi', pageWidth - margin - 2, yPos + 10, { align: 'right' });
+    doc.text('******************', pageWidth - margin - 2, yPos + 14, { align: 'right' });
+
+    // Logo (centré en haut)
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, pageWidth / 2 - 8, yPos + 1, 16, 16);
+      } catch (e) {
+        console.error('Failed to add logo to PDF', e);
+      }
+    }
+
+    // Bandeau Central (Nom de l'école) - Ajout d'une ligne de séparation subtile
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.3);
+    doc.line(margin, headerParams.stripY, pageWidth - margin, headerParams.stripY);
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text((school?.name || 'ECOLE PRIVEE "DONGO"').toUpperCase(), pageWidth / 2, headerParams.stripY + 5, { align: 'center' });
+
+    // Ligne de séparation sous le nom d'école
+    doc.line(margin, headerParams.stripY + headerParams.stripHeight, pageWidth - margin, headerParams.stripY + headerParams.stripHeight);
+
+    // Contacts (Bas de l'en-tête)
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    
+    const leftContact = school?.city ? `${school.city}${school.address ? ` - ${school.address}` : ''}` : 'BAMAKO - Daoudabougou';
+    const rightContactParts = [];
+    if (school?.phone) rightContactParts.push(`TEL : ${school.phone}`);
+    if (school?.email) rightContactParts.push(`Email : ${school.email}`);
+    const rightContact = rightContactParts.length > 0 ? rightContactParts.join(' / ') : 'TEL : 66 54 03 27 / 75 82 88 66';
+    
+    doc.text(leftContact, margin + 2, headerParams.stripY + headerParams.stripHeight + 5);
+    doc.text(rightContact, pageWidth - margin - 2, headerParams.stripY + headerParams.stripHeight + 5, { align: 'right' });
+    
+    yPos = yPos + headerParams.boxHeight + 2; // Réduit l'espace avant identité
+
+    // CARTE D'IDENTITÉ ADAPTATIVE
+    doc.setFillColor(theme.colors.background[0], theme.colors.background[1], theme.colors.background[2]);
+    doc.roundedRect(margin, yPos, contentWidth, (levelType === 'university' ? 24 : 30), 3, 3, 'F'); // Hauteur boîte réduite
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, yPos, contentWidth, (levelType === 'university' ? 24 : 30), 3, 3, 'S');
+    
+    doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(levelType === 'university' ? 'IDENTITÉ DE L\'ÉTUDIANT' : 'IDENTITÉ DE L\'ÉLÈVE', margin + 5, yPos + 6); // Départ des infos plus haut
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    
+    let infoY = yPos + 12; // Départ des infos plus haut
+    const infoRowHeight = 7; // Hauteur de ligne identité réduite
+    const col1 = margin + 5;
+    const col2 = margin + 65;
+    const col3 = margin + 125;
+    // Ligne 1 - Nom et Matricule
+    doc.setFont('helvetica', 'bold');
+    doc.text('Nom:', col1, infoY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${(student.last_name || '-').toUpperCase()} ${student.first_name || ''}`, col1 + 18, infoY);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('Matricule:', col2, infoY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(student.matricule || '-', col2 + 22, infoY);
+    
+    if (theme.showRanking && cardData.rank_in_class) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Classement:', col3, infoY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${cardData.rank_in_class}/${cardData.class_size || classStats?.length || '-'}`, col3 + 22, infoY);
+    } else {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Niveau:', col3, infoY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(level?.name || '-', col3 + 18, infoY);
+    }
+    
+    // Ligne 2 - Classe et Naissance
+    doc.setFont('helvetica', 'bold');
+    doc.text(levelType === 'university' ? 'Filière:' : 'Classe:', col1, infoY + infoRowHeight);
+    doc.setFont('helvetica', 'normal');
+    doc.text(studentClass?.name || '-', col1 + 18, infoY + infoRowHeight);
+    
+    if (student.date_of_birth) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Né(e) le:', col2, infoY + infoRowHeight);
+      doc.setFont('helvetica', 'normal');
+      const birthDate = new Date(student.date_of_birth).toLocaleDateString('fr-FR');
+      doc.text(birthDate, col2 + 18, infoY + infoRowHeight);
+    }
+    
+    if (theme.showAbsences) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Absences:', col3, infoY + infoRowHeight);
+      doc.setFont('helvetica', 'normal');
+      const totalAbsences = absences.justified + absences.unjustified;
+      doc.text(`${totalAbsences}h (${absences.justified}J, ${absences.unjustified}NJ)`, col3 + 18, infoY + infoRowHeight);
+    } else {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Période:', col3, infoY + infoRowHeight);
+      doc.setFont('helvetica', 'normal');
+      doc.text(period.name, col3 + 18, infoY + infoRowHeight);
+    }
+    
+    // Ligne 3 - Lieu de naissance (primaire/collège uniquement)
+    if (levelType !== 'university' && student.place_of_birth) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Lieu de naissance:', col1, infoY + infoRowHeight * 2);
+      doc.setFont('helvetica', 'normal');
+      doc.text(student.place_of_birth, col1 + 32, infoY + infoRowHeight * 2);
+    }
+    
+    yPos += levelType === 'university' ? 28 : 34; // Saut vers le titre réduit
+
+    // TITRE DU BULLETIN (Déplacé ici sous l'identité)
+    doc.setFillColor(235, 235, 235);
+    doc.rect(margin, yPos, contentWidth, 9, 'F');
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.6);
+    doc.rect(margin, yPos, contentWidth, 9, 'S');
+    
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    const periodNameUpper = period.name ? period.name.toUpperCase() : 'PÉRIODE';
+    doc.text(`${theme.title} DU ${periodNameUpper}`, pageWidth / 2, yPos + 6, { align: 'center' });
+    
+    // Année académique
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(academicYear?.name || '-', pageWidth - margin - 3, yPos + 6, { align: 'right' });
+    
+    yPos += 10; // Réduit avant le tableau
+
+    // TABLEAU DES NOTES
+    if (!hasPublishedGrades) {
+      doc.setFontSize(11);
+      doc.setTextColor(COLORS.text.medium[0], COLORS.text.medium[1], COLORS.text.medium[2]);
+      doc.text('Aucune note publiée pour cette période.', pageWidth / 2, yPos + 15, { align: 'center' });
+    } else {
+      const tbRowHeight = 6.5; // Hauteur des lignes du tableau de notes très compressées
+      
+      let headers: string[] = [];
+      let headersLine2: string[] = [];
+      let colWidths: number[] = [];
+      let isMaliFormat = false;
+      
+      if (levelType === 'middle_school' || levelType === 'high_school') {
+        isMaliFormat = true;
+        headers = ['Matières', 'Coéf', 'Moyenne', 'Notes', 'Moyenne', 'Moyenne', 'Appréciations'];
+        headersLine2 = ['', '', 'Classe', 'Comp', 'Comp', 'Coeff', 'des professeurs'];
+        colWidths = [42, 10, 18, 16, 18, 18, 68]; // sum = 190
+      } else if (levelType === 'university') {
+        headers = ['Unité d\'Enseignement (UE)', 'Matières (EC)', 'Note /20', 'Crédits (C)', 'Points obtenus', 'État'];
+        headersLine2 = ['', '', '', '', '(N x C)', 'de la matière'];
+        colWidths = [45, 45, 16, 18, 26, 40]; // sum = 190
+      } else {
+        headers = ['Matière', 'Coef.', 'Moy.', 'Note/10', 'Appréciation'];
+        if (levelType !== 'primary') headers[3] = 'Note/20';
+        colWidths = [45, 15, 20, 20, 48]; // Rang retiré, Appréciation élargie pour remplir l'espace
+      }
+      
+      const isExpandedHeader = isMaliFormat || levelType === 'university';
+      const headerRowHeight = isExpandedHeader ? 10 : tbRowHeight; // En-tête compressé
+      
+      doc.setFillColor(theme.colors.primary[0], theme.colors.primary[1], theme.colors.primary[2]);
+      doc.rect(margin, yPos, contentWidth, headerRowHeight, 'F');
+      
+      // Grille - Lignes horizontales pour en-tête
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.4);
+      doc.rect(margin, yPos, contentWidth, headerRowHeight, 'S');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      
+      let xOffset = margin;
+      
+      // Impression des en-têtes et lignes verticales d'en-tête
+      headers.forEach((header, index) => {
+        const alignType = 'center'; // Tout centrer pour format Malien par défaut, sauf matière si on veut
+        
+        // Impression du texte
+        const hasLine2 = headersLine2 && headersLine2.length > 0 && headersLine2[index] !== '';
+        const textY = hasLine2 ? yPos + 4 : yPos + (headerRowHeight / 2) + 1.5;
+        doc.text(header, xOffset + (colWidths[index] / 2), textY, { align: alignType });
+        
+        if (hasLine2) {
+          doc.text(headersLine2[index], xOffset + (colWidths[index] / 2), yPos + 7.5, { align: alignType });
+        }
+        
+        // Ligne de séparation verticale (sauf première bordure gauche déjà dessinée par rect)
+        if (index > 0) {
+          doc.line(xOffset, yPos, xOffset, yPos + headerRowHeight);
+        }
+        
+        xOffset += colWidths[index];
+      });
+      
+      yPos += headerRowHeight;
+      
+      let totalCoef = 0;
+      let totalMoyenneCoeff = 0;
+      let totalUniversityCredits = 0;
+      let totalUniversityPoints = 0;
+      
+      // Lignes des matières
+      if (levelType === 'university') {
+        let groupedUEs: Record<string, any[]> = {};
+        subjectAverages.forEach((s: any) => {
+          const ue = s.categoryName || 'UE Générale';
+          if (!groupedUEs[ue]) groupedUEs[ue] = [];
+          groupedUEs[ue].push(s);
+        });
+
+        let isOddRow = false;
+
+        Object.entries(groupedUEs).forEach(([ueName, subjects]) => {
+          let ueCredits = 0;
+          let uePoints = 0;
+          subjects.forEach(s => {
+            const c = (s.coefficient || 1);
+            ueCredits += c;
+            uePoints += (parseFloat(s.average || 0) * c);
+          });
+          const ueAvg = ueCredits > 0 ? (uePoints / ueCredits) : 0;
+          
+          subjects.forEach((subject, idx) => {
+            const bgColor = isOddRow ? COLORS.background.rowOdd : COLORS.background.rowEven;
+            isOddRow = !isOddRow;
+            doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+            doc.rect(margin, yPos, contentWidth, tbRowHeight, 'F');
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.4);
+            doc.rect(margin, yPos, contentWidth, tbRowHeight, 'S');
+            
+            let vLineX = margin;
+            colWidths.forEach((w, i) => { if (i > 0) doc.line(vLineX, yPos, vLineX, yPos + tbRowHeight); vLineX += w; });
+            
+            let txOffset = margin;
+            
+            // Col 1: UE Name / Moyenne
+            doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+            if (subjects.length === 1) {
+              doc.setFont('helvetica', 'bold');
+              doc.text(ueName, txOffset + 2, yPos + 4.5);
+            } else {
+              if (idx === 0) {
+                doc.setFont('helvetica', 'bold');
+                doc.text(ueName, txOffset + 2, yPos + 4.5);
+              } else if (idx === subjects.length - 1) {
+                doc.setFont('helvetica', 'italic');
+                doc.text(`(Moyenne UE : ${ueAvg.toFixed(2)})`, txOffset + 2, yPos + 4.5);
+              }
+            }
+            
+            doc.setFont('helvetica', 'normal');
+            txOffset += colWidths[0];
+            
+            // Col 2: EC
+            doc.text(subject.subjectName || '-', txOffset + 2, yPos + 4.5);
+            txOffset += colWidths[1];
+            
+            // Col 3: Note/20
+            const avg = parseFloat(subject.average || 0);
+            const mentionColor = getMentionColor(avg >= 16 ? 'Très Bien' : avg >= 14 ? 'Bien' : avg >= 12 ? 'Assez Bien' : avg >= 10 ? 'Passable' : 'Insuffisant');
+            doc.setTextColor(mentionColor[0], mentionColor[1], mentionColor[2]);
+            doc.text(avg.toFixed(theme.gradePrecision), txOffset + colWidths[2] / 2, yPos + 4.5, { align: 'center' });
+            txOffset += colWidths[2];
+            
+            // Col 4: Crédits
+            doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+            const cred = subject.coefficient || 1;
+            doc.text(cred.toString(), txOffset + colWidths[3] / 2, yPos + 4.5, { align: 'center' });
+            txOffset += colWidths[3];
+            
+            // Col 5: Points
+            const pts = avg * cred;
+            doc.setFont('helvetica', 'bold');
+            doc.text(pts.toFixed(2), txOffset + colWidths[4] / 2, yPos + 4.5, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            txOffset += colWidths[4];
+            
+            // Col 6: État
+            const isValidated = avg >= 10;
+            const etatText = isValidated ? 'Validée (V)' : 'À repasser';
+            
+            // Set text color (Green = Validated, Red = Needs Retake)
+            doc.setTextColor(isValidated ? 34 : 220, isValidated ? 197 : 38, isValidated ? 94 : 38);
+            doc.text(etatText, txOffset + colWidths[5] / 2, yPos + 4.5, { align: 'center' });
+            
+            // Revert back to text color
+            doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+            
+            yPos += tbRowHeight;
+            totalUniversityCredits += cred;
+            totalUniversityPoints += pts;
+          });
+        });
+      } else {
+      subjectAverages.forEach((subject: any, index: number) => {
+        const bgColor = index % 2 === 0 ? COLORS.background.rowOdd : COLORS.background.rowEven;
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+        doc.rect(margin, yPos, contentWidth, tbRowHeight, 'F');
+        
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.4);
+        doc.rect(margin, yPos, contentWidth, tbRowHeight, 'S');
+
+        // Dessiner les séparateurs verticaux de la ligne courante
+        let vLineX = margin;
+        colWidths.forEach((w, i) => {
+          if (i > 0) {
+             doc.line(vLineX, yPos, vLineX, yPos + tbRowHeight);
+          }
+          vLineX += w;
+        });
+        
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold'); // Matière en gras comme sur capture
+        
+        const avg = parseFloat(subject.average || 0);
+        const avgDisplay = levelType === 'primary' ? (avg / 2) : avg;
+        const maxDisplay = levelType === 'primary' ? 10 : 20;
+        const mentionColor = getMentionColor(avg >= 16 ? 'Très Bien' : avg >= 14 ? 'Bien' : avg >= 12 ? 'Assez Bien' : avg >= 10 ? 'Passable' : 'Insuffisant');
+        
+        xOffset = margin;
+        doc.text(subject.subjectName || '-', xOffset + 2, yPos + 4.5); // Y ajusté pour petite hauteur
+        xOffset += colWidths[0];
+        
+        doc.setFont('helvetica', 'normal'); // Repasser en normal pour les notes
+        
+        if (isMaliFormat) {
+          // Si l'élève n'a pas de note de Devoirs mais a une note d'Examen, le devoir prend la note de l'examen
+          let hwScore = subject.homeworkAverage;
+          if ((typeof hwScore !== 'number' || isNaN(hwScore)) && typeof subject.examAverage === 'number' && !isNaN(subject.examAverage)) {
+             hwScore = subject.examAverage;
+          }
+          
+          const coef = subject.coefficient || 1;
+          totalCoef += coef;
+          const moyenneCoeff = avgDisplay * coef;
+          totalMoyenneCoeff += moyenneCoeff;
+          
+          doc.setFont('helvetica', 'bold'); // Les chiffres sont gras sur la capture
+          // Coéf
+          doc.text(coef.toString(), xOffset + (colWidths[1] / 2), yPos + 4.5, { align: 'center' });
+          xOffset += colWidths[1];
+          doc.setFont('helvetica', 'normal');
+          
+          // Moyenne Classe (hwDisplay)
+          const hwDisplay = typeof hwScore === 'number' && !isNaN(hwScore) ? hwScore.toFixed(theme.gradePrecision) : '-';
+          doc.text(hwDisplay, xOffset + (colWidths[2] / 2), yPos + 4.5, { align: 'center' });
+          xOffset += colWidths[2];
+          // Notes Comp (exDisplay)
+          const exDisplay = typeof subject.examAverage === 'number' && !isNaN(subject.examAverage) ? subject.examAverage.toFixed(theme.gradePrecision) : '-';
+          doc.text(exDisplay, xOffset + (colWidths[3] / 2), yPos + 4.5, { align: 'center' });
+          xOffset += colWidths[3];
+          
+          // Moyenne Comp (avgDisplay)
+          doc.setFont('helvetica', 'bold'); // Moyenne comp en evidence
+          doc.setTextColor(mentionColor[0], mentionColor[1], mentionColor[2]);
+          doc.text(avgDisplay.toFixed(theme.gradePrecision), xOffset + (colWidths[4] / 2), yPos + 4.5, { align: 'center' });
+          doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+          xOffset += colWidths[4];
+          doc.setFont('helvetica', 'normal');
+          
+          // Moyenne Coeff
+          doc.text(moyenneCoeff.toFixed(theme.gradePrecision), xOffset + (colWidths[5] / 2), yPos + 4.5, { align: 'center' });
+          xOffset += colWidths[5];
+          // Appréciations
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          doc.text(getAppreciation(avgDisplay, levelType), xOffset + (colWidths[6] / 2), yPos + 4.5, { align: 'center' });
+          xOffset += colWidths[6];
+        } else {
+          doc.text((subject.coefficient || 1).toString(), xOffset + (colWidths[1] / 2), yPos + 5.5, { align: 'center' });
+          xOffset += colWidths[1];
+          doc.setTextColor(mentionColor[0], mentionColor[1], mentionColor[2]);
+          doc.text(avgDisplay.toFixed(theme.gradePrecision), xOffset + (colWidths[2] / 2), yPos + 5.5, { align: 'center' });
+          xOffset += colWidths[2];
+          doc.text(avgDisplay.toFixed(1) + '/' + maxDisplay, xOffset + (colWidths[3] / 2), yPos + 5.5, { align: 'center' });
+          xOffset += colWidths[3];
+          doc.setFontSize(7);
+          doc.text(getAppreciation(avg, levelType), xOffset + 2, yPos + 5.5, { align: 'left' });
+          xOffset += colWidths[4]; // la colonne Rang a été supprimée, l'appréciation prend l'espace restant
+        }
+        
+        yPos += tbRowHeight;
+      });
+      } // Fin du bloc (else -> non universite)
+      
+      // Ligne TOTAL pour Collège et Lycée
+      if (isMaliFormat) {
+        doc.setFillColor(theme.colors.background[0], theme.colors.background[1], theme.colors.background[2]);
+        doc.rect(margin, yPos, contentWidth, tbRowHeight, 'F');
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.6); // Ligne plus épaisse pour le total (comme tableau)
+        doc.rect(margin, yPos, contentWidth, tbRowHeight, 'S');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        
+        let txOffset = margin;
+        doc.text('TOTAL', txOffset + 2, yPos + 4.5);
+        txOffset += colWidths[0];
+        doc.line(txOffset, yPos, txOffset, yPos + tbRowHeight); // séparateur vertical Total -> Coef
+        
+        doc.text(totalCoef.toString(), txOffset + (colWidths[1] / 2), yPos + 4.5, { align: 'center' });
+        txOffset += colWidths[1];
+        doc.line(txOffset, yPos, txOffset, yPos + tbRowHeight); // séparateur vertical Coef -> vide
+        
+        txOffset += colWidths[2] + colWidths[3] + colWidths[4];
+        doc.line(txOffset, yPos, txOffset, yPos + tbRowHeight); // séparateur vertical vide -> Moyenne Coeff
+        doc.text(totalMoyenneCoeff.toFixed(theme.gradePrecision), txOffset + (colWidths[5] / 2), yPos + 4.5, { align: 'center' });
+        
+        yPos += tbRowHeight;
+        
+        // Bordure englobante Malienne
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.6);
+        doc.rect(margin, yPos - (subjectAverages.length * tbRowHeight) - headerRowHeight - tbRowHeight, contentWidth, (subjectAverages.length + 1) * tbRowHeight + headerRowHeight, 'S');
+      } else if (levelType === 'university') {
+        doc.setFillColor(theme.colors.background[0], theme.colors.background[1], theme.colors.background[2]);
+        doc.rect(margin, yPos, contentWidth, tbRowHeight, 'F');
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.6);
+        doc.rect(margin, yPos, contentWidth, tbRowHeight, 'S');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        
+        let txOffset = margin;
+        doc.text('TOTAL', txOffset + 2, yPos + 4.5);
+        txOffset += colWidths[0] + colWidths[1] + colWidths[2]; // Move to Credits
+        doc.line(txOffset, yPos, txOffset, yPos + tbRowHeight);
+        
+        doc.text(totalUniversityCredits.toString(), txOffset + (colWidths[3] / 2), yPos + 4.5, { align: 'center' });
+        txOffset += colWidths[3];
+        doc.line(txOffset, yPos, txOffset, yPos + tbRowHeight);
+        
+        doc.text(totalUniversityPoints.toFixed(2), txOffset + (colWidths[4] / 2), yPos + 4.5, { align: 'center' });
+        txOffset += colWidths[4];
+        doc.line(txOffset, yPos, txOffset, yPos + tbRowHeight);
+        
+        const finalAvg = totalUniversityCredits > 0 ? (totalUniversityPoints / totalUniversityCredits) : 0;
+        const verdict = finalAvg >= 10 ? 'ADMIS' : 'AJOURNÉ';
+        doc.text(verdict, txOffset + colWidths[5] / 2, yPos + 4.5, { align: 'center' });
+        
+        yPos += tbRowHeight;
+        
+        // Final Box for university
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.6);
+        doc.rect(margin, yPos - (subjectAverages.length * tbRowHeight) - headerRowHeight - tbRowHeight, contentWidth, (subjectAverages.length + 1) * tbRowHeight + headerRowHeight, 'S');
+      } else {
+        // Bordure classique pour Primaire
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.3);
+        doc.rect(margin, yPos - (subjectAverages.length * tbRowHeight) - headerRowHeight, contentWidth, (subjectAverages.length + 1) * tbRowHeight + (headerRowHeight - tbRowHeight));
+      }
+      
+      yPos += 3; // Réduit le gap entre le tableau et le récapitulatif
+      
+      // RÉCAPITULATIF
+      const avg = parseFloat(cardData.overall_average || 0);
+      const mentionColor = getMentionColor(cardData.mention);
+      
+      if (levelType === 'middle_school' || levelType === 'high_school') {
+        const avgGeneralDisplay = avg;
+        
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.5);
+        
+        // Ligne 1: Moyenne de l'élève
+        doc.rect(margin, yPos, 80, 8); // Label
+        doc.rect(margin + 80, yPos, 20, 8); // Valeur
+        doc.rect(margin + 100, yPos, contentWidth - 100, 8); // Appreciation
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+        doc.text('Moyenne de l\'élève', margin + 2, yPos + 5.5);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text(avgGeneralDisplay.toFixed(theme.gradePrecision), margin + 90, yPos + 5.5, { align: 'center' });
+        
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${cardData.mention || ''}, ${getAppreciation(avg, levelType)}`, margin + 102, yPos + 5.5);
+        
+        yPos += 8;
+        
+        // Ligne 2: Rang / Effectif
+        doc.rect(margin, yPos, 80, 8); // Label
+        doc.rect(margin + 80, yPos, 20, 8); // Valeur
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Rang / Effectif', margin + 2, yPos + 5);
+        
+        const rankText = cardData.rank_in_class ? `${cardData.rank_in_class}${cardData.rank_in_class === 1 ? 'er' : 'ème'} / ${cardData.class_size || '-'}` : '-';
+        doc.text(rankText, margin + 90, yPos + 5);
+        
+        yPos += 10; // Réduit avant signatures (au lieu de 14)
+      } else if (levelType === 'university') {
+        const finalAvg = totalUniversityCredits > 0 ? (totalUniversityPoints / totalUniversityCredits) : 0;
+        
+        // Calcul mention et appreciation
+        let mentionUniversity = cardData.mention;
+        if (!mentionUniversity) {
+           if (finalAvg >= 16) mentionUniversity = "Très Bien";
+           else if (finalAvg >= 14) mentionUniversity = "Bien";
+           else if (finalAvg >= 12) mentionUniversity = "Assez Bien";
+           else if (finalAvg >= 10) mentionUniversity = "Passable";
+           else mentionUniversity = "Insuffisant";
+        }
+        const appreciation = getAppreciation(finalAvg, levelType);
+        
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.5);
+        
+        // Ligne 1: Moyenne de l'étudiant
+        doc.rect(margin, yPos, 80, 8); 
+        doc.rect(margin + 80, yPos, contentWidth - 80, 8); 
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+        doc.text('Moyenne de l\'étudiant', margin + 2, yPos + 5.5);
+        doc.text(finalAvg.toFixed(theme.gradePrecision), margin + 82, yPos + 5.5);
+        
+        yPos += 8;
+
+        // Ligne 2: Mention
+        doc.rect(margin, yPos, 80, 8); 
+        doc.rect(margin + 80, yPos, contentWidth - 80, 8); 
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Mention', margin + 2, yPos + 5.5);
+        
+        // Couleur spécifique pour la mention
+        const mc = getMentionColor(mentionUniversity);
+        doc.setTextColor(mc[0], mc[1], mc[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text(mentionUniversity.toUpperCase(), margin + 82, yPos + 5.5);
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]); // reset color
+        
+        yPos += 8;
+
+        // Ligne 3: Appréciation
+        doc.rect(margin, yPos, 80, 8); 
+        doc.rect(margin + 80, yPos, contentWidth - 80, 8); 
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Appréciation', margin + 2, yPos + 5.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(appreciation, margin + 82, yPos + 5.5);
+        
+        yPos += 10;
+        
+        // Ligne 2: Rang / Effectif
+        doc.rect(margin, yPos, 80, 8); // Label
+        doc.rect(margin + 80, yPos, 20, 8); // Valeur
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Rang / Effectif', margin + 2, yPos + 5);
+        
+        const rankText = cardData.rank_in_class ? `${cardData.rank_in_class}${cardData.rank_in_class === 1 ? 'er' : 'ème'} / ${cardData.class_size || '-'}` : '-';
+        doc.text(rankText, margin + 90, yPos + 5);
+        
+        yPos += 14; 
+        
+        // --- FIN SECTION RÉCAPITULATIVE ---
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text('Analyse mathématique du résultat :', margin, yPos + 8);
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        
+        const yLine1 = yPos + 18;
+        doc.circle(margin + 2, yLine1 - 1, 1, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.text('Calcul de la moyenne : ', margin + 5, yLine1);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${totalUniversityPoints.toFixed(2)} points / ${totalUniversityCredits} crédits = ${finalAvg.toFixed(2)} / 20.`, margin + 45, yLine1);
+        
+        const yLine2 = yPos + 26;
+        doc.circle(margin + 2, yLine2 - 1, 1, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.text('Verdict : ', margin + 5, yLine2);
+        doc.setFont('helvetica', 'normal');
+        const verdictMsg = finalAvg >= 10 ? 'Le semestre est validé car la moyenne est supérieure ou égale à 10.' : 'Le semestre n\'est pas validé car la moyenne est inférieure à 10.';
+        doc.text(verdictMsg, margin + 20, yLine2);
+        
+        const yLine3 = yPos + 34;
+        doc.circle(margin + 2, yLine3 - 1, 1, 'F');
+        doc.setFont('helvetica', 'bold');
+        const ptsCible = totalUniversityCredits * 10;
+        if (finalAvg < 10) {
+            doc.text('Points manquants : ', margin + 5, yLine3);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Pour valider ce semestre, l'étudiant aurait dû obtenir ${ptsCible} points (${totalUniversityCredits} crédits × 10). Il lui manque donc ${(ptsCible - totalUniversityPoints).toFixed(2)} points.`, margin + 35, yLine3, { maxWidth: contentWidth - 35 });
+        } else {
+            doc.text('Points obtenus : ', margin + 5, yLine3);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`L'étudiant a obtenu ${totalUniversityPoints.toFixed(2)} points, validant ainsi complétement le semestre.`, margin + 31, yLine3);
+        }
+        
+        yPos += 45;
+      } else {
+        doc.setFillColor(theme.colors.background[0], theme.colors.background[1], theme.colors.background[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 25, 3, 3, 'F');
+        doc.setDrawColor(theme.colors.secondary[0], theme.colors.secondary[1], theme.colors.secondary[2]);
+        doc.roundedRect(margin, yPos, contentWidth, 25, 3, 3, 'S');
+        
+        doc.setFontSize(10);
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text('MOYENNE GÉNÉRALE:', margin + 5, yPos + 14);
+        
+        doc.setFontSize(16);
+        doc.setTextColor(mentionColor[0], mentionColor[1], mentionColor[2]);
+        const avgGeneralDisplay = levelType === 'primary' ? (avg / 2) : avg;
+        const maxGeneralDisplay = levelType === 'primary' ? 10 : 20;
+        doc.text(avgGeneralDisplay.toFixed(theme.gradePrecision) + '/' + maxGeneralDisplay, margin + 46, yPos + 15);
+        
+        const detailX = margin + 85;
+        doc.setFontSize(9);
+        
+        // Mention
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Mention:', detailX, yPos + 8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(mentionColor[0], mentionColor[1], mentionColor[2]);
+        doc.text(cardData.mention || '-', detailX + 16, yPos + 8);
+        
+        // Appréciation
+        doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Appréciation:', detailX, yPos + 14);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLORS.text.medium[0], COLORS.text.medium[1], COLORS.text.medium[2]);
+        doc.text(getAppreciation(avg, levelType), detailX + 22, yPos + 14);
+        
+        // Rang
+        if (cardData.rank_in_class) {
+          doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Rang:', detailX, yPos + 20);
+          doc.setFont('helvetica', 'normal');
+          doc.text(`${cardData.rank_in_class}${cardData.rank_in_class === 1 ? 'er' : 'ème'} sur ${cardData.class_size || classStats?.length || '-'}`, detailX + 11, yPos + 20);
+        }
+        
+        yPos += 32;
+      }
+      
+      // FIN RÉCAPITULATIF
+    }
+
+    // SIGNATURES
+    if (yPos > pageHeight - 60) {
+      doc.addPage();
+      yPos = margin;
+    }
+    
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    
+    yPos += 8;
+    doc.setFontSize(9);
+    doc.setTextColor(COLORS.text.dark[0], COLORS.text.dark[1], COLORS.text.dark[2]);
+    doc.setFont('helvetica', 'bold');
+    
+    if (levelType === 'university') {
+      doc.text('Le Directeur Général', margin, yPos);
+      doc.text('Le Responsable Pédagogique', pageWidth - margin - 50, yPos);
+      
+      yPos += 20;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('(Cachet et signature)', margin, yPos);
+      doc.text('(Signature)', pageWidth - margin - 25, yPos);
+    } else {
+      doc.text('Le Directeur/Principal', margin, yPos);
+      doc.text('Le Parent/Tuteur', pageWidth / 2 - 20, yPos);
+      doc.text('L\'Élève', pageWidth - margin - 20, yPos);
+      
+      yPos += 20;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('(Cachet et signature)', margin, yPos);
+      doc.text('(Signature)', pageWidth - margin - 25, yPos);
+    }
+    
+    yPos += 15;
+    
+    // QR CODE (Génération via API Externe pour éviter le crash Deno Canvas)
+    const verificationUrl = `https://nova-connect.app/verify/report-card/${studentId}/${periodId}`;
+    
+    try {
+      // 1. Fetch QR code image from external API
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(verificationUrl)}`;
+      const qrResponse = await fetch(qrApiUrl);
+      
+      if (qrResponse.ok) {
+        // 2. Convert to ArrayBuffer then Base64
+        const arrayBuffer = await qrResponse.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        
+        let binary = '';
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        
+        const base64Data = btoa(binary);
+        const qrImage = `data:image/png;base64,${base64Data}`;
+        
+        // 3. Inject to PDF
+        doc.addImage(qrImage, 'PNG', margin, yPos, 20, 20);
+        
+        doc.setFontSize(7);
+        doc.setTextColor(COLORS.text.light[0], COLORS.text.light[1], COLORS.text.light[2]);
+        doc.text('Scannez pour vérifier l\'authenticité', margin + 22, yPos + 10);
+      }
+    } catch (qrError) {
+      console.error('QR API generation failed:', qrError);
+    }
+    
+    // TAMPON
+    doc.setFillColor(theme.colors.accent[0], theme.colors.accent[1], theme.colors.accent[2]);
+    doc.setDrawColor(theme.colors.accent[0], theme.colors.accent[1], theme.colors.accent[2]);
+    doc.setLineWidth(0.5);
+    
+    const stampX = pageWidth - margin - 35;
+    const stampY = yPos + 5;
+    
+    for (let i = 0; i < 3; i++) {
+      doc.ellipse(stampX, stampY, 15 + (i * 2), 10 + (i * 1.5), 'S');
+    }
+    
+    doc.setFontSize(6);
+    doc.setTextColor(theme.colors.accent[0], theme.colors.accent[1], theme.colors.accent[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.text(theme.name.toUpperCase(), stampX, stampY - 3, { align: 'center' });
+    
+    const currentDate = new Date().toLocaleDateString('fr-FR');
+    doc.setFontSize(5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Document généré le ${currentDate}`, stampX, stampY + 2, { align: 'center' });
+    doc.text('Signature numérique', stampX, stampY + 6, { align: 'center' });
+
+    // PIED DE PAGE
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.text.light[0], COLORS.text.light[1], COLORS.text.light[2]);
+    doc.text(
+      `Document généré le ${currentDate} - © ${school?.name || 'NovaConnect'}`,
+      pageWidth / 2,
+      pageHeight - 10,
+      { align: 'center' }
+    );
+
+    // Generate filename and upload (Prefixed with school_id to respect Storage RLS policies)
+    const fileName = `${student.school_id}/bulletin_${student.matricule || studentId}_${period.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+    const pdfBuffer = doc.output('arraybuffer');
+
+    const { error: uploadError } = await supabase
+      .storage
+      .from('report-cards')
+      .upload(fileName, pdfBuffer, {
+        contentType: 'application/pdf',
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw new Error(`Failed to upload PDF: ${uploadError.message}`);
+    }
+
+    const { data: urlData } = await supabase
+      .storage
+      .from('report-cards')
+      .createSignedUrl(fileName, 3600);
+
+    const reportCardRecord = {
+      student_id: studentId,
+      period_id: periodId,
+      class_id: cardData.class_id,
+      academic_year_id: cardData.academic_year_id,
+      school_id: student.school_id, // ADDED: Required for useReportCards filtering
+      grading_scale_id: cardData.grading_scale_id, // ADDED: Required NOT NULL constraint
+      pdf_url: fileName,            // FIXED: Column is pdf_url in schema, not file_path
+      pdf_size_bytes: pdfBuffer.byteLength, // ADDED: PDF Size recording
+      overall_average: cardData.overall_average,
+      rank_in_class: cardData.rank_in_class,
+      class_size: cardData.class_size || classStats?.length || 1, // ADDED: Required NOT NULL constraint
+      mention: cardData.mention,
+      subject_averages: cardData.subject_averages,
+      generated_by: user.id,
+      generated_at: new Date().toISOString(),
+      status: 'generated'
+    };
+
+    if (existingCard) {
+      await supabase
+        .from('report_cards')
+        .update(reportCardRecord)
+        .eq('id', existingCard.id);
+    } else {
+      await supabase
+        .from('report_cards')
+        .insert(reportCardRecord);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        reportCard: {
+          ...reportCardRecord,
+          signedUrl: urlData?.signedUrl,
+          fileName
+        },
+        schoolType: theme.name
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Error generating report card:', error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
